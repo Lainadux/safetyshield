@@ -259,7 +259,7 @@ public class OneLaneThreeCars {
          * Shalev-Shwartz, S., Shammah, S., Shashua, A.: On a formal model of safe and scalable self-driving cars.
          * CoRR abs/1708.06374 (2017), http://arxiv.org/abs/1708.0637
          */
-        double d1 = responseTime*rearVehicleSpeed;
+        double d1 = responseTime * rearVehicleSpeed;
         double d2 = 0.5 * MAX_ACCELERATION*responseTime*responseTime;
         double d3 = Math.pow((rearVehicleSpeed+responseTime*MAX_ACCELERATION),2)/(2*MIN_BRAKE);
         double d4 = - (frontVehicleSpeed*frontVehicleSpeed)/(2*MAX_BRAKE);

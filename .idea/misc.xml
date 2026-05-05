@@ -8,5 +8,12 @@
     <option name="OUTPUT_DIRECTORY" value="$USER_HOME$/Desktop" />
     <option name="OPTION_INCLUDE_LIBS" value="true" />
   </component>
+  <component name="MavenProjectsManager">
+    <option name="originalFiles">
+      <list>
+        <option value="$PROJECT_DIR$/examples/Shielding/pom.xml" />
+      </list>
+    </option>
+  </component>
   <component name="ProjectRootManager" version="2" languageLevel="JDK_17" project-jdk-name="19" project-jdk-type="JavaSDK" />
 </project>

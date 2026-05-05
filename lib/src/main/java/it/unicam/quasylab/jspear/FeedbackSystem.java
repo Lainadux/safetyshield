@@ -25,6 +25,7 @@ package it.unicam.quasylab.jspear;
 import it.unicam.quasylab.jspear.controller.Controller;
 import it.unicam.quasylab.jspear.controller.EffectStep;
 import it.unicam.quasylab.jspear.ds.DataState;
+import it.unicam.quasylab.jspear.ds.DataStateBooleanExpression;
 import it.unicam.quasylab.jspear.ds.DataStateFunction;
 import it.unicam.quasylab.jspear.feedback.Feedback;
 import org.apache.commons.math3.random.RandomGenerator;
@@ -52,7 +53,11 @@ public class FeedbackSystem implements SystemState {
         this.state = state;
         this.feedback = feedback;
     }
+    @Override
+    public SystemState sampleNextCond(RandomGenerator rg, DataStateBooleanExpression expr) {
 
+        return null;
+    }
     @Override
     public DataState getDataState() {
         return state;
