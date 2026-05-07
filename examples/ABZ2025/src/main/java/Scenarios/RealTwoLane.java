@@ -49,7 +49,7 @@ public class RealTwoLane {
     public static void main(String[] args) {
         HighwayEngine engine = new HighwayEngine(1/SIMULATION_FREQUENCY);
         ArrayList<Vehicle> vehicles = new ArrayList<>();
-        engine.step(vehicles);
+
 
 
     }

@@ -1,55 +1,292 @@
-/*
- * STARK: Software Tool for the Analysis of Robustness in the unKnown environment
- *
- *                Copyright (C) 2023.
- *
- * See the NOTICE file distributed with this work for additional information
- * regarding copyright ownership.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *             http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
- * or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package Scenarios;
+import Scenarios.Vehicle;
 
+import javax.swing.*;
+import java.awt.*;
+import java.awt.geom.AffineTransform;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 public class HighwayEngine {
-    public List<Vehicle> vehicles;
+    public List<Vehicle> vehicles = new ArrayList<>();
     public double dt;
+
+    public double runTime = 0.0;
+    public long stepCount = 0;
+    public  int STEPS_PER_SECOND;
+    private JFrame frame;
+    private JPanel renderPanel;
+    private final int SCALE = 15;
+    private final int LANE_WIDTH = 4;
+    public int numLanes = 3;
     public HighwayEngine(double dt) {
-        this.vehicles = new ArrayList<>();
+
         this.dt = dt;
+        this.STEPS_PER_SECOND = (int) Math.round(1.0 / dt);
+    }
+    public int[] computePossibleLanes(Vehicle vehicle){
+        List<Integer> possibleLanes = new ArrayList<>();
+        for (int i = vehicle.lane_index - 1; i <= vehicle.lane_index + 1; i++) {
+            if (i >= 0 && i < numLanes) {
+                possibleLanes.add(i);
+            }
+        }
+        return possibleLanes.stream().mapToInt(i -> i).toArray();
+
     }
 
     public void addVehicle(Vehicle v) {
         this.vehicles.add(v);
     }
+
     public void step() throws Exception {
-        // 【第一阶段：全局冻结，各自思考】
-        // 所有车看着彼此当前的（旧）位置，决定下一秒干嘛
+        for (Vehicle v : vehicles) { v.planAction(vehicles); }
         for (Vehicle v : vehicles) {
-            v.planAction(vehicles);
+            v.applyPhysics();
         }
 
-        // 【第二阶段：时间流逝，集体结算】
-        // 所有车同时应用刚才的决定，更新坐标
+
+        // 调试打印：只看 Ego 车
+        Vehicle ego = vehicles.get(0);
+        this.runTime += this.dt;
+        stepCount++;
         for (Vehicle v : vehicles) {
-            v.applyPhysics(dt);
+            if(v instanceof ControlledVehicle){
+                v.checkCollision();
+            }
         }
+
+
+    }
+    public void populateTraffic(int targetVehicles, int numLanes, double minX, double maxX) {
+        this.numLanes = numLanes;
+        Random rand = new Random();
+        int spawned = 0;
+        int attempts = 0;
+        int MAX_ATTEMPTS = targetVehicles * 20;
+
+
+        final double LANE_WIDTH = 4.0;
+        final double SAFE_SPAWN_DISTANCE = 15.0;
+
+
+
+        while (spawned < targetVehicles && attempts < MAX_ATTEMPTS) {
+            attempts++;
+
+
+            int lane = rand.nextInt(numLanes);
+            double yCenter = lane * LANE_WIDTH;
+
+
+            double x = minX + (maxX - minX) * rand.nextDouble();
+
+            boolean collision = false;
+            for (Vehicle existing : this.vehicles) {
+                if (existing.lane_index == lane) {
+
+                    if (Math.abs(existing.x - x) < SAFE_SPAWN_DISTANCE) {
+                        collision = true;
+                        break;
+                    }
+                }
+            }
+
+
+            if (collision) continue;
+
+            Vehicle v;
+            if(spawned == 0){
+                 v = new ControlledVehicle();
+            }else{
+                 v = new Vehicle();
+            }
+
+
+            v.x = x;
+            v.y = yCenter;
+            v.lane_index = lane;
+            v.target_lane_index = lane;
+
+            v.id = v.role + "-" + spawned;
+            v.cooldownTimer = rand.nextDouble() * 1;
+
+            double speed = 20.0 + rand.nextGaussian() * 3.0;
+
+
+            v.speed = Math.max(10.0, Math.min(30.0, speed));
+
+            v.targetSpeed = v.speed + rand.nextDouble() * 5.0;
+
+            this.addVehicle(v);
+            v.injectEngine(this);
+
+
+            spawned++;
+        }
+
+
     }
 
 
-}
 
+    public void render() {
+
+        if (frame == null) {
+            initUI();
+        }
+
+
+        renderPanel.repaint();
+
+
+        try {
+            Thread.sleep((long) (dt * 1000));
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void initUI() {
+        frame = new JFrame("STARK Highway Simulator");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setSize(1200, 400);
+
+        renderPanel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                drawHighway((Graphics2D) g);
+            }
+        };
+
+        renderPanel.setBackground(new Color(40, 40, 40));
+        frame.add(renderPanel);
+        frame.setVisible(true);
+    }
+
+
+    private void drawHighway(Graphics2D g2d) {
+
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        int screenWidth = renderPanel.getWidth();
+        int screenHeight = renderPanel.getHeight();
+        int topMargin = 100;
+
+
+        double cameraX = vehicles.isEmpty() ? 0 : vehicles.get(0).x;
+        int offsetX = (int) (screenWidth / 2 - cameraX * SCALE); // 把车放在屏幕左侧 1/3 处
+
+        g2d.setColor(Color.WHITE);
+
+
+        double[] lineYPositions = {-2.0, 2.0, 6.0, 10.0};
+
+        for (int i = 0; i < lineYPositions.length; i++) {
+
+            int yPixel = topMargin + (int)(lineYPositions[i] * SCALE);
+
+            if (i == 0 || i == lineYPositions.length - 1) {
+
+                g2d.setStroke(new BasicStroke(3));
+            } else {
+
+                float[] dash = {15.0f};
+                g2d.setStroke(new BasicStroke(2, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, dash, 0.0f));
+            }
+
+
+            g2d.drawLine(0, yPixel, screenWidth, yPixel);
+        }
+
+
+        for (Vehicle v : vehicles) {
+
+            int px = (int) (v.x * SCALE) + offsetX;
+            int py = (int) (v.y * SCALE) + topMargin;
+
+            int carPixelLength = (int) (v.LENGTH * SCALE);
+            int carPixelWidth = (int) (2.0 * SCALE);
+
+
+            AffineTransform oldTransform = g2d.getTransform();
+
+
+            g2d.translate(px, py);
+
+            g2d.rotate(v.heading);
+
+            if ("EGO".equalsIgnoreCase(v.role)) {
+                g2d.setColor(new Color(0, 200, 255));
+            } else {
+                g2d.setColor(new Color(255, 80, 80));
+            }
+
+
+            g2d.fillRect(-carPixelLength / 2, -carPixelWidth / 2, carPixelLength, carPixelWidth);
+
+
+            g2d.setColor(Color.BLACK);
+            g2d.fillRect(carPixelLength / 4, -carPixelWidth / 2, 4, carPixelWidth);
+
+            g2d.setTransform(oldTransform);
+
+
+            g2d.setColor(Color.YELLOW);
+            g2d.drawString(String.format("V:%.1f L:%d", v.speed, v.lane_index), px - 15, py - 20);
+
+            g2d.drawString(String.format("(vx:%.1f, vy:%.1f)", v.x, v.y), px - 15, py + 30);
+
+            g2d.drawString(String.format("A:%.2f", v.plannedAcceleration), px - 15, py + 50);
+
+            g2d.drawString(String.format("T:%.1f", v.targetSpeed), px - 15, py + 70);
+
+
+            for (Integer lane : v.mobil.keySet()) {
+                List<Double> mobilValues = v.mobil.get(lane);
+                g2d.drawString(String.format("lane:%d: overall:%.2f,self:%.2f,benefit%.2f", lane, mobilValues.get(0), mobilValues.get(1), mobilValues.get(2)), px - 15, py + 90 + lane * 20);
+            }
+            //cooldowntimer
+            g2d.drawString(String.format("cool:%.1f", v.cooldownTimer), px - 15, py + 150);
+            //mobiling
+            g2d.drawString(String.format("mobiling:%b", v.mobiling), px - 15, py + 170);
+            //possiblelanes
+            for(int i =0; i<v.possible_lanes.length; i++) {
+                g2d.drawString(String.format("possible lane:%d", v.possible_lanes[i]), px - 15, py + 190 + i * 20);
+            }
+        }
+    }
+   public void checkCollisions() {
+        // 双重循环遍历所有车辆的组合 (只测 i 和 j，不重复测试)
+        for (int i = 0; i < vehicles.size(); i++) {
+            for (int j = i + 1; j < vehicles.size(); j++) {
+                Vehicle v1 = vehicles.get(i);
+                Vehicle v2 = vehicles.get(j);
+
+                // 1. 计算两车中心的绝对距离
+                double dx = Math.abs(v1.x - v2.x);
+                double dy = Math.abs(v1.y - v2.y);
+
+                // 2. 假设你的车有 LENGTH 和 WIDTH 属性 (如果没有，写死 5.0 和 2.0)
+                // 碰撞判定：X重叠 并且 Y重叠
+                boolean overlapX = dx < (v1.LENGTH / 2.0 + v2.LENGTH / 2.0);
+                boolean overlapY = dy < (2.0 / 2.0 + 2.0 / 2.0); // 假设 WIDTH 是 2.0
+
+                if (overlapX && overlapY) {
+                    // 3. 触发致命碰撞！抛出带 ID 的运行时异常
+                    String crashMsg = String.format(
+                            "💥 致命物理碰撞检测触发！\n" +
+                                    "肇事车辆：[%s-%d] 与 [%s-%d] 发生了重叠！\n" +
+                                    "接触点坐标 -> V1 X:%.1f Y:%.1f | V2 X:%.1f Y:%.1f",
+                            v1.role, v1.id,
+                            v2.role, v2.id,
+                            v1.x, v1.y, v2.x, v2.y
+                    );
+                    throw new RuntimeException(crashMsg);
+                }
+            }
+        }
+    }
+}

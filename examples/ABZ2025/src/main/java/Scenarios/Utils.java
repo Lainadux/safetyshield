@@ -189,7 +189,7 @@ public class Utils {
                 }
                 double karma = karma_a_new - karma_a_old;
                 double overall_benefit = (new_a - current_a) + ds.get(politeness[car_index]) * (benefit + karma);
-                if(overall_benefit > LANE_CHANGE_MIN_ACC_GAIN && karma > -LANE_CHANGE_MAX_BRAKING_IMPOSED){
+                if(overall_benefit > LANE_CHANGE_MIN_ACC_GAIN && karma_a_new > -LANE_CHANGE_MAX_BRAKING_IMPOSED){
                     possible_lanes.add(possible_lane);
                 }
 

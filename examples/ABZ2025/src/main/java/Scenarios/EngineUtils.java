@@ -21,10 +21,36 @@
  */
 
 package Scenarios;
-
+import javax.swing.*;
+import java.awt.*;
+import java.awt.geom.AffineTransform;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class EngineUtils {
+    public static boolean isDoubleEqual(double a, double b) {
+        double epsilon = 1e-4;
+        return Math.abs(a - b) < epsilon;
+    }
+    public static final double RIGHT_LANE_BIAS = 0.3;
+    public HighwayEngine createEngine(double dt) {
+        return new HighwayEngine(dt);
+    }
+    private static final double TAU_ACC = 0.6;
+    private static final double TAU_HEADING=0.2;
+    private static final double TAU_LATERAL = 0.6;
+
+    private static final double KP_A = 1 / TAU_ACC;
+    private static final double KP_HEADING = 1 / TAU_HEADING;
+    private static final double KP_LATERAL = 1 / TAU_LATERAL;
+
+    private static final double LANE_CHANGE_MIN_ACC_GAIN = 0.2;
+    // politeness is modeled as R.V in STARK
+    private static final double LANE_CHANGE_MAX_BRAKING_IMPOSED = 2.0;
+
+    private static final int LANE_WIDTH = 4;
     private static final double COMFORT_ACC_MAX = 3.0;
     private static final double DISTANCE_WANTED = 10;
     private static final double TIME_WANTED = 1.5;
@@ -92,11 +118,11 @@ public class EngineUtils {
      * @return
      */
     public static double p_controller(double target, double current) {
-        double Kp = 1/0.6;
-        return clip(Kp * (target - current));
+
+        return clip(KP_A * (target - current));
     }
     public static double computeAccel(Vehicle vehicle, List<Vehicle> environments, int LaneNo) throws Exception {
-        if (vehicle.role.equals("ego")) {
+        if (vehicle instanceof ControlledVehicle) {
             return p_controller(vehicle.targetSpeed, vehicle.speed);
         }
         else {
@@ -113,6 +139,7 @@ public class EngineUtils {
                 s = Math.max(s, 0.01);
                 double sStar = DISTANCE_WANTED + v * TIME_WANTED +
                         (v * dv) / (2 * Math.sqrt(COMFORT_ACC_MAX * Math.abs(COMFORT_ACC_MIN)));
+                sStar = Math.max(sStar, DISTANCE_WANTED);
                 double interactionTerm = Math.pow(sStar / s, 2);
                 double acceleration = COMFORT_ACC_MAX * (freeFlowTerm - interactionTerm);
                 return clip(acceleration);
@@ -120,48 +147,152 @@ public class EngineUtils {
 
         }
     }
+    public static double computeAccel(Vehicle vehicle, Vehicle frontVehicle) throws Exception {
+        if (vehicle instanceof ControlledVehicle) {
+            return p_controller(vehicle.targetSpeed, vehicle.speed);
+        }
+        double v = vehicle.vx;
+        double v0 = vehicle.targetSpeed;
+        double freeFlowTerm = 1 - Math.pow(v / v0, DELTA);
+
+        if (frontVehicle == null) {
+            return COMFORT_ACC_MAX * freeFlowTerm;
+        } else {
+            double dv = v - frontVehicle.vx;
+            double s = frontVehicle.x - vehicle.x - vehicle.LENGTH;
+            s = Math.max(s, 0.01);
+            double sStar = DISTANCE_WANTED + v * TIME_WANTED +
+                    (v * dv) / (2 * Math.sqrt(COMFORT_ACC_MAX * Math.abs(COMFORT_ACC_MIN)));
+            sStar = Math.max(sStar, DISTANCE_WANTED);
+            double interactionTerm = Math.pow(sStar / s, 2);
+            double acceleration = COMFORT_ACC_MAX * (freeFlowTerm - interactionTerm);
+            return clip(acceleration);
+        }
+    }
 
     public static double clip(double accel){
         return Math.min(MAX_ACCELERATION, Math.max(MIN_BRAKE, accel));
     }
-    public static int computeTargetLane(Vehicle vehicle, List<Vehicle> environments, List<Integer>possibleLanes) throws Exception {
-        return 0;
+    public static boolean isChangingLane(Vehicle vehicle) {
+        //System.out.println("vehicle lane index: " + vehicle.lane_index + ", target lane index: " + vehicle.target_lane_index);
+        return vehicle.lane_index != vehicle.target_lane_index;
+    }
+    public static int computeTargetLane(Vehicle vehicle, List<Vehicle> environments, List<Integer>possibleLanes, HighwayEngine engine) throws Exception {
+        if (vehicle instanceof ControlledVehicle) {
+            ControlledVehicle ego = (ControlledVehicle) vehicle;
+            if(engine.stepCount% engine.STEPS_PER_SECOND == 0 ){
+                ego.fetchDesiredLaneAndTargetSpeed();
+            }
+            return ego.target_lane_index;
+        }
+        else {
+            //if the car is not ready to chang lane
+            if(vehicle.cooldownTimer <1.0 || isChangingLane(vehicle)){
+                System.out.println(isChangingLane(vehicle));
+                vehicle.mobiling = false;
+                System.out.println("cooldown timer: " + vehicle.cooldownTimer);
+                return vehicle.target_lane_index;
+            }
+            else {
+                Map<Integer, List<Double>> mobilmap = new HashMap<>();
+                vehicle.mobiling = true;
+                List<Integer>newLane = new ArrayList<>();
+                for(int lane: engine.computePossibleLanes(vehicle)){
+
+                    if(lane != vehicle.lane_index){
+                        double current_a = computeAccel(vehicle, environments, vehicle.lane_index);
+                        double new_a = computeAccel(vehicle, environments, lane);
+
+                        double benefit_a_old = 0;
+                        double benefit_a_new = 0;
+                        Vehicle benifitCarBehind =  getRearVehicle(vehicle, environments, vehicle.lane_index);
+                        if(benifitCarBehind != null){
+                            benefit_a_old = computeAccel(benifitCarBehind, vehicle);
+                            benefit_a_new = computeAccel(benifitCarBehind, getFrontVehicle(vehicle, environments, vehicle.lane_index));
+                        }
+                        double benefit = benefit_a_new - benefit_a_old;
+
+                        double karma_a_old = 0;
+                        double karma_a_new = 0;
+                        Vehicle karma_car_behind = getRearVehicle(vehicle, environments, lane);
+                        if(karma_car_behind != null){
+                            karma_a_old = computeAccel(karma_car_behind, getFrontVehicle(karma_car_behind, environments, lane));
+                            karma_a_new = computeAccel(karma_car_behind, vehicle);
+                        }
+                        double karma = karma_a_new - karma_a_old;
+                        //european version
+//                        double bias = 0.0;
+//                        if (lane > vehicle.lane_index) {
+//
+//                            bias = RIGHT_LANE_BIAS;
+//                        } else if (lane < vehicle.lane_index) {
+//
+//                            bias = -RIGHT_LANE_BIAS;
+//                        }
+//
+//
+//                        double overall_benefit = (new_a - current_a) + vehicle.politness * (benefit + karma) + bias;
+
+                        // the computation of overall_benefit differs in different sources
+                        double overall_benefit = (new_a - current_a) + vehicle.politeness * (benefit + karma);
+
+                        if(overall_benefit > LANE_CHANGE_MIN_ACC_GAIN && karma_a_new > -LANE_CHANGE_MAX_BRAKING_IMPOSED){
+
+                            newLane.add(lane);
+
+                        }
+
+
+
+                        mobilmap.put(lane, List.of(overall_benefit, new_a - current_a, benefit, karma));
+                    }
+
+                }
+
+                vehicle.mobil = mobilmap;
+                vehicle.possible_lanes = newLane.stream().mapToInt(i -> i).toArray();
+
+
+                //return !newLane.isEmpty() ? newLane.get(newLane.size()-1) : vehicle.lane_index;
+                if(!newLane.isEmpty()){
+                    vehicle.cooldownTimer = 0.0;
+                    return newLane.get(newLane.size()-1);
+                }
+                else {
+
+                    return vehicle.lane_index;
+                }
+            }
+        }
 
 
     }
     public static double computeSteering(Vehicle v) {
-        // 假设标准车道宽度为 4.0 米
-        final double LANE_WIDTH = 4.0;
 
-        // 1. 找到目标车道的中心线 Y 坐标
         double targetY = v.target_lane_index * LANE_WIDTH;
 
-        // 2. 计算横向偏差 (Lateral Error)
         double deltaY = targetY - v.y;
 
-        // 3. P-Controller 1: 计算期望的横向速度
-        // 距离目标越远，我们希望横向平移的速度越快
-        double KP_LATERAL = 1.0; // 横向比例系数
+
         double desiredVy = KP_LATERAL * deltaY;
 
-        // 安全限制：横向速度不能违反物理规律，限制在 [-2.5, 2.5] m/s 之间
         desiredVy = Math.max(-2.5, Math.min(2.5, desiredVy));
 
-        // 4. 计算期望的车头偏航角 (Desired Heading)
-        // 数学公式：sin(heading) = Vy / V_total。这里做小角度近似处理
+
         double desiredHeading = 0.0;
-        if (v.speed > 1.0) { // 极低速时防抖，防止除以 0
-            desiredHeading = Math.asin(desiredVy / v.speed);
+        if (v.speed > 1.0) {
+            double ratio = desiredVy / v.speed;
+
+            ratio = Math.max(-1.0, Math.min(1.0, ratio));
+            desiredHeading = Math.asin(ratio);
         }
 
-        // 5. P-Controller 2: 计算方向盘转角
-        // 期望的车头角度 减去 当前的实际车头角度
-        double KP_HEADING = 1.5; // 转向比例系数
+
+
         double deltaHeading = desiredHeading - v.heading;
 
         double steering = KP_HEADING * deltaHeading;
 
-        // 6. 物理极限限制：方向盘不能无限打，限制在最大转向角 (如 45度 = PI/4)
         final double MAX_STEERING = Math.PI / 4.0;
         steering = Math.max(-MAX_STEERING, Math.min(MAX_STEERING, steering));
 

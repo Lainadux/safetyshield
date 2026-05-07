@@ -24,61 +24,113 @@ package Scenarios;
 
 import com.google.gson.annotations.SerializedName;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 // this class is for HighwayEngine
 public class Vehicle {
-    public double cooldownTimer = 1.0;
-    // 物理状态
+    boolean mobiling = false; //for debugging
+    public int[] possible_lanes = new int[]{0, 1, 2}; // for debugging
+    public Map<Integer, List<Double>> mobil = new HashMap<>(); // for debugging
+    public String id ="default";
+    public double politeness = 0.0;
+    private HighwayEngine engine;
+    public HighwayEngine getEngine() {
+        if (this.engine == null) {
+            throw new IllegalStateException("Engine not injected yet!");
+        }
+        return this.engine;
+    }
+    public double cooldownTimer = 0.0;
     public int target_lane_index;
+
     public int lane_index;
     public String role = "NPC";
     public double x, y;
     public double vx, vy;
     public double speed;
-    public double heading; // 车身偏航角
+    public double heading;
 
-    // 内部缓存：这一帧决定要做的动作
-    private double plannedAcceleration = 0.0;
-    private double plannedSteering = 0.0;
 
-    public final double LENGTH = 5.0; // 车长
-    public final double WHEELBASE = 2.5; // 轴距
+    public double plannedAcceleration = 0.0;
+    public double plannedSteering = 0.0;
 
-    //this attribute is for IDM
-    @SerializedName("target_speed")
-    public double targetSpeed;
-    public void planAction(List<Vehicle> allVehicles) throws Exception {
-        // 1. 观察周围环境（遍历 allVehicles 找到前车）
-        // 2. 运行 IDM 模型计算油门
-        // 3. 运行纯跟踪 / PD 控制器计算方向盘转角
 
-        // ⚠️ 关键：只把结果存起来，绝对不在这里修改坐标！
-        this.plannedAcceleration = EngineUtils.computeAccel(this, allVehicles, target_lane_index);
-        this.target_lane_index = EngineUtils.computeTargetLane(this, allVehicles, List.of(0, 1));
+    public final double LENGTH = 5.0;
+    public final double WHEELBASE = 5.0;
 
-        this.plannedSteering = EngineUtils.computeSteering(this)/* 算出的方向盘转角 */;
+    public void injectEngine(HighwayEngine engine) {
+
+        if(!engine.vehicles.contains(this)) {
+            throw new IllegalArgumentException("Vehicle must be added to the engine before injecting it!");
+        }
+        this.engine = engine;
     }
 
-    // === 阶段二：肉体执行 (自行车模型欧拉积分) ===
-    public void applyPhysics(double dt) {
-        // 1. 更新速度 (v = v0 + a * dt)
-        this.speed += this.plannedAcceleration * dt;
+    @SerializedName("target_speed")
+    public double targetSpeed = 25;
+    public void planAction(List<Vehicle> allVehicles) throws Exception {
 
-        // 2. 更新 Heading (基于自行车模型公式)
+        this.target_lane_index = EngineUtils.computeTargetLane(this, allVehicles, List.of(0, 1), this.engine);
+        this.plannedAcceleration = Math.min(EngineUtils.computeAccel(this, allVehicles, target_lane_index), EngineUtils.computeAccel(this, allVehicles, lane_index));
+        this.plannedSteering = EngineUtils.computeSteering(this);
+    }
+
+
+    public void applyPhysics() {
+
+        this.speed += this.plannedAcceleration * engine.dt;
+
+
         double yawRate = (this.speed / WHEELBASE) * Math.tan(this.plannedSteering);
-        this.heading += yawRate * dt;
+        this.heading += yawRate * engine.dt;
 
-        // 3. 更新 X 和 Y 坐标 (三角函数分解)
-        this.x += this.speed * Math.cos(this.heading) * dt;
-        this.y += this.speed * Math.sin(this.heading) * dt;
+        this.x += this.speed * Math.cos(this.heading) * engine.dt;
+        this.y += this.speed * Math.sin(this.heading) * engine.dt;
 
-        // 可选：根据速度和 Heading 顺便更新一下 vx 和 vy，方便外部读取
         this.vx = this.speed * Math.cos(this.heading);
         this.vy = this.speed * Math.sin(this.heading);
-        //跨线
+
+
         this.lane_index = (int) Math.round(this.y / 4.0);
+        this.cooldownTimer += engine.dt;
+
+
+        if (Double.isNaN(this.speed) || Double.isNaN(this.heading)) {
+            throw new RuntimeException("NaN Virus Detected in Vehicle " + this.role +
+                    "! a=" + this.plannedAcceleration + ", steer=" + this.plannedSteering);
+        }
+
+    }
+    public void checkCollision() {
+        List<Vehicle> environments = this.getEngine().vehicles;
+        for (Vehicle other : environments) {
+
+            if (other == this) continue;
+
+            // 算自己和别人的绝对距离
+            double dx = Math.abs(this.x - other.x);
+            double dy = Math.abs(this.y - other.y);
+
+            // 假设车辆有 LENGTH 和 WIDTH 属性 (宽度设为 2.0)
+            boolean overlapX = dx < (this.LENGTH / 2.0 + other.LENGTH / 2.0);
+            boolean overlapY = dy < (2.0 / 2.0 + 2.0 / 2.0);
+
+            if (overlapX && overlapY) {
+                // 抛出带有明确责任方的异常
+                String crashMsg = String.format(
+                        "💥 致命碰撞！\n肇事车辆：[%s-%d] 在移动后一头撞上了 [%s-%d]！\n" +
+                                "肇事车坐标 X:%.1f Y:%.1f | 被撞车坐标 X:%.1f Y:%.1f",
+                        this.role, this.id,
+                        other.role, other.id,
+                        this.x, this.y, other.x, other.y
+                );
+                throw new RuntimeException(crashMsg);
+            }
+        }
     }
 
 
 }
+
