@@ -59,6 +59,7 @@ public class Vehicle {
 
     public final double LENGTH = 5.0;
     public final double WHEELBASE = 5.0;
+    public final double WIDTH = 2.0;
 
     public void injectEngine(HighwayEngine engine) {
 
@@ -115,7 +116,7 @@ public class Vehicle {
 
             // 假设车辆有 LENGTH 和 WIDTH 属性 (宽度设为 2.0)
             boolean overlapX = dx < (this.LENGTH / 2.0 + other.LENGTH / 2.0);
-            boolean overlapY = dy < (2.0 / 2.0 + 2.0 / 2.0);
+            boolean overlapY = dy < (this.WIDTH / 2.0 + other.WIDTH / 2.0);
 
             if (overlapX && overlapY) {
                 // 抛出带有明确责任方的异常

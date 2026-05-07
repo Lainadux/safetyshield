@@ -11,7 +11,7 @@ import java.util.Random;
 public class HighwayEngine {
     public List<Vehicle> vehicles = new ArrayList<>();
     public double dt;
-
+    public boolean hasEgo = false;
     public double runTime = 0.0;
     public long stepCount = 0;
     public  int STEPS_PER_SECOND;
@@ -20,8 +20,13 @@ public class HighwayEngine {
     private final int SCALE = 15;
     private final int LANE_WIDTH = 4;
     public int numLanes = 3;
+    public HighwayEngine(double dt, boolean hasEgo) {
+        this.hasEgo = hasEgo;
+        this.dt = dt;
+        this.STEPS_PER_SECOND = (int) Math.round(1.0 / dt);
+    }
     public HighwayEngine(double dt) {
-
+        this.hasEgo = false;
         this.dt = dt;
         this.STEPS_PER_SECOND = (int) Math.round(1.0 / dt);
     }
@@ -51,10 +56,15 @@ public class HighwayEngine {
         Vehicle ego = vehicles.get(0);
         this.runTime += this.dt;
         stepCount++;
-        for (Vehicle v : vehicles) {
-            if(v instanceof ControlledVehicle){
-                v.checkCollision();
+        if(hasEgo) {
+            for (Vehicle v : vehicles) {
+                if (v instanceof ControlledVehicle) {
+                    v.checkCollision();
+                }
             }
+        }
+        else{
+            this.checkCollisions();
         }
 
 
@@ -97,10 +107,13 @@ public class HighwayEngine {
             if (collision) continue;
 
             Vehicle v;
-            if(spawned == 0){
-                 v = new ControlledVehicle();
-            }else{
-                 v = new Vehicle();
+            if (hasEgo && spawned == 0) {
+                v = new ControlledVehicle();
+                v.role = "EGO";
+            }
+            else {
+                v = new Vehicle();
+                v.role = "NPC";
             }
 
 
@@ -208,7 +221,7 @@ public class HighwayEngine {
             int py = (int) (v.y * SCALE) + topMargin;
 
             int carPixelLength = (int) (v.LENGTH * SCALE);
-            int carPixelWidth = (int) (2.0 * SCALE);
+            int carPixelWidth = (int) (v.WIDTH * SCALE);
 
 
             AffineTransform oldTransform = g2d.getTransform();

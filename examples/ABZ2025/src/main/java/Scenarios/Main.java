@@ -30,7 +30,7 @@ public class Main {
 
 
         //engine.populateTraffic(4, 3, 0.0, 50.0);
-        engine.populateTraffic(5, 3, 0.0, 50.0);
+        engine.populateTraffic(4, 2, 0.0, 50.0);
 
 
 //        Vehicle ego = new Vehicle();
