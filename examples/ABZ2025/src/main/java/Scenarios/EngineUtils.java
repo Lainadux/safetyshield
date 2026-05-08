@@ -171,6 +171,7 @@ public class EngineUtils {
             return clip(acceleration);
         }
     }
+
     public static double desiredGap(Vehicle thisVehicle, Vehicle frontVehicle) {
 
         if (frontVehicle == null) {
@@ -217,7 +218,7 @@ public class EngineUtils {
                     if(isChangingLane(other) && other.getTargetLaneIndex() == vehicle.getTargetLaneIndex()){
                         double d =  vehicle.laneDistanceTo(other);
                         double d_star = desiredGap(vehicle, other);
-                        if(d < d_star){
+                        if(0<d &&d < d_star){
 
                             return vehicle.getLaneIndex();
                         }
@@ -230,6 +231,9 @@ public class EngineUtils {
             }
 
             else {
+                if(engine.runTime>2.5){
+                    System.out.println("Vehicle " + vehicle.id + " at lane " + vehicle.getLaneIndex() + " with speed " + vehicle.speed);
+                }
                 Map<Integer, List<Double>> mobilmap = new HashMap<>();
                 vehicle.mobiling = true;
                 List<Integer>newLane = new ArrayList<>();
@@ -240,7 +244,6 @@ public class EngineUtils {
                         //double current_a = computeAccel(vehicle, environments, vehicle.lane_index);
                         double current_a = computeAccel(vehicle, environments, vehicle.getLaneIndex());
                         double new_a = computeAccel(vehicle, environments, lane);
-
                         double benefit_a_old = 0;
                         double benefit_a_new = 0;
 //                        Vehicle benifitCarBehind =  getRearVehicle(vehicle, environments, vehicle.lane_index);
@@ -259,6 +262,8 @@ public class EngineUtils {
                         if(karma_car_behind != null){
                             karma_a_old = computeAccel(karma_car_behind, getFrontVehicle(karma_car_behind, environments, lane));
                             karma_a_new = computeAccel(karma_car_behind, vehicle);
+
+                            System.out.println("karma_old: " + karma_a_old + ", karma_new: " + karma_a_new);
                         }
                         double karma = karma_a_new - karma_a_old;
                         //european version
@@ -278,10 +283,9 @@ public class EngineUtils {
 
                         double overall_benefit = (new_a - current_a) + vehicle.politeness * (benefit + karma);
 
-                        if(overall_benefit > LANE_CHANGE_MIN_ACC_GAIN && karma_a_new > -LANE_CHANGE_MAX_BRAKING_IMPOSED){
 
+                        if(overall_benefit > LANE_CHANGE_MIN_ACC_GAIN && isSafeConsideringRearVehicle(vehicle, karma_car_behind, karma_a_new)){
                             newLane.add(lane);
-
                         }
 
 
@@ -308,6 +312,21 @@ public class EngineUtils {
 
             }
         }
+
+
+    }
+    public static boolean isSafeConsideringRearVehicle(Vehicle vehicle, Vehicle rearVehicle, double newKarma) {
+        if(rearVehicle == null){
+            return true;
+        }
+
+        if(rearVehicle instanceof ControlledVehicle){
+            //
+            double TTC = (vehicle.x - rearVehicle.x - rearVehicle.LENGTH) / Math.max(1e-5, rearVehicle.vx - vehicle.vx);
+            System.out.println("Time to collision with rear vehicle: " + TTC);
+            return TTC > 1.0;
+        }
+        return newKarma > -LANE_CHANGE_MAX_BRAKING_IMPOSED;
 
 
     }

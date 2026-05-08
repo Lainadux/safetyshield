@@ -22,6 +22,7 @@
 
 package Scenarios;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class Main {
@@ -34,11 +35,13 @@ public class Main {
         Usage usage;
         usage = Usage.ENGINE;
         //usage = Usage.RECOVERFROMLOG;
-        //usage = Usage.STARK;
+       //usage = Usage.STARK;
         if(usage == Usage.RECOVERFROMLOG){
 
-            List<Vehicle> vehicles = StateSaver.loadState("initial_state_1778261060783.json");
-            //vehicles.set(0, vehicles.get(0).ascendAsControlledVehicle());
+            List<Vehicle> vehicles = StateSaver.loadState("bug2.json");
+            vehicles.set(0, vehicles.get(0).ascendAsControlledVehicle());
+            //vehicles.remove(1);
+            //vehicles.remove(4);
             //vehicles.remove(0);
             HighwayEngine engine = new HighwayEngine(0.02, true, false, vehicles);
             int frameCount = 0;
@@ -50,25 +53,52 @@ public class Main {
             }
         }
 
-        if(usage == Usage.STARK){
+        if(usage == Usage.STARK) {
             double dt = 0.02;
-            while(true) {
-                List<Vehicle> vehicles = fetchInitialVehicles(dt, 4, 3, 0.0, 50.0);
-                HighwayEngine engine = new HighwayEngine(dt, true, true, vehicles);
-                StarkShieldApp starkShieldApp = engine.createStarkShieldApp();
-            }
+            HighwayEngine realWorld = new HighwayEngine(dt, true);
+            realWorld.populateTraffic(8, 3, 0.0, 50.0);
+            Vehicle egoVehicle = realWorld.getEgoVehicle();
+            boolean isSafe = false;
+            while (realWorld.runTime < 40) {
+                System.out.println("Step: " + realWorld.stepCount + ", Time: " + realWorld.runTime);
+                if (realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0) {
+                    {
+                        List<Vehicle> vehicles = new ArrayList<>();
+                        for(Vehicle v: realWorld.vehicles){
+                           if(v instanceof ControlledVehicle){
+                               ControlledVehicle cv = (ControlledVehicle) v;
+                               cv.simulated = true;
+                               vehicles.add(cv);
+                           }
+                           else{
+                               vehicles.add(v);
+                           }
+                        }
+                        HighwayEngine engine = new HighwayEngine(dt, true, true, vehicles);
+                        StarkShieldApp starkShieldApp = engine.createStarkShieldApp();
+                    }
 
+                }
+                if (isSafe) {
+                    realWorld.step();
+                } else {
+                    realWorld.step(egoVehicle.lane_index, egoVehicle.targetSpeed);
+                }
+                realWorld.render();
+
+
+            }
         }
         //HighwayEngine engine = new ControlledHighwayEngine(0.02);
         if(usage == Usage.ENGINE) {
-            HighwayEngine engine = new HighwayEngine(0.02, false);
-            engine.requireCollisionLog = true;
+            HighwayEngine engine = new HighwayEngine(0.02, true);
+            //engine.requireCollisionLog = true;
             engine.enhancedCollisionCheckEnabled = true;
             engine.saveInitStateAnyWay = true;
             engine.egoCentered = true;
 
             //engine.populateTraffic(4, 3, 0.0, 50.0);
-            engine.populateTraffic(8, 3, 0.0, 50.0);
+            engine.populateTraffic(6, 3, 0.0, 50.0);
             int frameCount = 0;
             while (true) {
                 engine.step();

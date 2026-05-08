@@ -27,6 +27,14 @@ public class HighwayEngine {
     private final int LANE_WIDTH = 4;
     public int numLanes = 3;
 
+    public Vehicle getEgoVehicle() {
+        for (Vehicle v : vehicles) {
+            if (v instanceof ControlledVehicle) {
+                return v;
+            }
+        }
+        throw new IllegalStateException("No EGO vehicle found in the engine!");
+    }
     public HighwayEngine(double dt, boolean hasEgo) {
         this.hasEgo = hasEgo;
         this.dt = dt;
@@ -75,6 +83,7 @@ public class HighwayEngine {
                 StateSaver.saveState(this.initialVehiclesStates, "initial_state_" + System.currentTimeMillis() + ".json");
             }
         }
+
         for (Vehicle v : vehicles) { v.planAction(vehicles); }
         for (Vehicle v : vehicles) {
             v.applyPhysics();
@@ -100,6 +109,46 @@ public class HighwayEngine {
         }
 
 
+    }
+    public void step(int targetLaneIndex, double targetSpeed) throws Exception {
+        if(EngineUtils.isDoubleEqual(this.runTime, 0.0)){
+            for(Vehicle v : vehicles) {
+                this.initialVehiclesStates.add(v.deepCopySelf());
+            }
+            if (saveInitStateAnyWay) {
+                StateSaver.saveState(this.initialVehiclesStates, "initial_state_" + System.currentTimeMillis() + ".json");
+            }
+        }
+
+        for (Vehicle v : vehicles) {
+            v.planAction(vehicles);
+            if(v instanceof ControlledVehicle) {
+                v.setTargetLaneIndex(v.getLaneIndex());
+                v.targetSpeed = targetSpeed;
+            }
+        }
+        for (Vehicle v : vehicles) {
+            v.applyPhysics();
+        }
+
+
+        // 调试打印：只看 Ego 车
+        Vehicle ego = vehicles.get(0);
+        this.runTime += this.dt;
+        stepCount++;
+        if(hasEgo) {
+            for (Vehicle v : vehicles) {
+                if (v instanceof ControlledVehicle) {
+                    v.checkCollision();
+                }
+            }
+            if(enhancedCollisionCheckEnabled) {
+                this.checkCollisions();
+            }
+        }
+        else{
+            this.checkCollisions();
+        }
     }
     public void populateTraffic(int targetVehicles, int numLanes, double minX, double maxX) {
         this.numLanes = numLanes;
@@ -155,12 +204,6 @@ public class HighwayEngine {
             //v.target_lane_index = lane;
             v.setLaneIndex(lane);
             v.setTargetLaneIndex(lane);
-            if(egoCentered && v.role.equals("EGO")){
-                lane = numLanes/2;
-                v.y = lane * LANE_WIDTH;
-                v.setLaneIndex(lane);
-                v.setTargetLaneIndex(lane);
-            }
 
             v.id = ""+spawned;
             v.cooldownTimer = rand.nextDouble() * 1;
@@ -169,6 +212,14 @@ public class HighwayEngine {
 
 
             v.speed = Math.max(10.0, Math.min(30.0, speed));
+            if(egoCentered && v.role.equals("EGO")){
+                lane = numLanes/2;
+                v.y = lane * LANE_WIDTH;
+                v.setLaneIndex(lane);
+                v.setTargetLaneIndex(lane);
+                v.speed = 25;
+            }
+
 
             v.targetSpeed = v.speed + rand.nextDouble() * 5.0;
 
@@ -303,7 +354,7 @@ public class HighwayEngine {
 
             for (Integer lane : v.mobil.keySet()) {
                 List<Double> mobilValues = v.mobil.get(lane);
-                g2d.drawString(String.format("lane:%d: overall:%.2f,self:%.2f,karma%.2f", lane, mobilValues.get(0), mobilValues.get(1), mobilValues.get(3)), px - 15, py + 90 + lane * 20);
+                g2d.drawString(String.format("lane:%d: overall:%.2f,self:%.2f,karmanew%.2f", lane, mobilValues.get(0), mobilValues.get(1), mobilValues.get(3)), px - 15, py + 90 + lane * 20);
             }
             //cooldowntimer
             g2d.drawString(String.format("cool:%.1f", v.cooldownTimer), px - 15, py + 150);

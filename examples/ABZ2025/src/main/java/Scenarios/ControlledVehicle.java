@@ -25,6 +25,7 @@ package Scenarios;
 import java.util.List;
 
 public class ControlledVehicle extends Vehicle {
+    boolean simulated = false;
 
     public ControlledVehicle() {
         super();
@@ -42,8 +43,34 @@ public class ControlledVehicle extends Vehicle {
         this.role = "EGO";
     }
 
+    public void performShieldedAction(){
+
+    }
     public void signify(){
-        this.fetchDesiredLaneAndTargetSpeed();
+        if(!simulated){
+            this.fetchDesiredLaneAndTargetSpeed(); //fetch AI decision
+        }
+        else{
+            HighwayEngine engine = this.getEngine();
+            if(engine.stepCount% engine.STEPS_PER_SECOND == 0 ){
+                //do nothing, the decision is from the real ControlledVehicle, which performed fetchDesiredLaneAndTargetSpeed()
+            }
+            else{
+                //protection logic： deceleration
+                this.target_lane_index = this.getTargetLaneIndex();
+                this.targetSpeed = this.targetSpeed -5 < 0 ? 0 : this.targetSpeed -5;
+
+            }
+
+        }
+
+    }
+    public ControlledVehicle cloneForSimulation() {
+        ControlledVehicle clone = new ControlledVehicle(this.x, this.y, this.getLaneIndex(), this.speed);
+        clone.setTargetLaneIndex(this.getTargetLaneIndex());
+        clone.targetSpeed = this.targetSpeed;
+        clone.simulated = true;
+        return clone;
     }
     public void fetchDesiredLaneAndTargetSpeed() {
         HighwayEngine engine = this.getEngine();
@@ -55,7 +82,7 @@ public class ControlledVehicle extends Vehicle {
     }
     public void randomActionGenerator(){
 
-        boolean changeLane = Math.random() < 0.3;
+        boolean changeLane = Math.random() < 0;
         if(changeLane){
             int[] lanes = this.getEngine().computePossibleLanes(this);
 
@@ -67,16 +94,17 @@ public class ControlledVehicle extends Vehicle {
         }
         else{
             double rand = Math.random();
-            if(rand < 0.5){
+            if(rand < 0){
                 //不变速
             }
-            else if(rand < 0.85){
-                //加速
-                this.targetSpeed += 5;
-            }
+//            else if(rand < 0.85){
+//                //加速
+//                this.targetSpeed += 5;
+//            }
             else{
                 //减速
-                this.targetSpeed -= 5;
+                this.targetSpeed = this.targetSpeed <= 5 ? 0 : this.targetSpeed - 5;
+
             }
         }
     }
