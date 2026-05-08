@@ -22,9 +22,27 @@
 
 package Scenarios;
 
+import java.util.List;
+
 public class Main {
+    enum Usage{
+        ENGINE,
+        STARK
+    }
     public static void main(String[] args) throws Exception {
-        System.out.println("你好");
+        Usage usage;
+        //usage = Usage.ENGINE;
+        usage = Usage.STARK;
+
+
+        if(usage == Usage.STARK){
+            double dt = 0.02;
+            List<Vehicle> vehicles = fetchInitialVehicles(dt, 4, 3, 0.0, 50.0);
+            HighwayEngine engine = new HighwayEngine(dt, true, vehicles);
+            StarkShieldApp starkShieldApp = engine.createStarkShieldApp();
+
+            return;
+        }
         //HighwayEngine engine = new ControlledHighwayEngine(0.02);
         HighwayEngine engine = new HighwayEngine(0.02);
 
@@ -65,4 +83,12 @@ public class Main {
             frameCount++;
         }
     }
+
+    public static List<Vehicle> fetchInitialVehicles(double dt, int numVehicles, int numLanes, double minX, double maxX){
+        HighwayEngine highwayEngine = new HighwayEngine(dt);
+        highwayEngine.populateTraffic(numVehicles, numLanes, minX, maxX);
+        return highwayEngine.vehicles;
+
+    }
+
 }

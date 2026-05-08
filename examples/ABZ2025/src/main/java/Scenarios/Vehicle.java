@@ -44,22 +44,22 @@ public class Vehicle {
     }
     public double cooldownTimer = 0.0;
     public int target_lane_index;
-
     public int lane_index;
     public String role = "NPC";
+
     public double x, y;
     public double vx, vy;
     public double speed;
     public double heading;
-
-
     public double plannedAcceleration = 0.0;
     public double plannedSteering = 0.0;
-
-
     public final double LENGTH = 5.0;
     public final double WHEELBASE = 5.0;
     public final double WIDTH = 2.0;
+
+    public String getRole() {
+        return this instanceof ControlledVehicle ? "EGO" : "NPC";
+    }
 
     public void injectEngine(HighwayEngine engine) {
 
@@ -99,7 +99,8 @@ public class Vehicle {
 
 
         if (Double.isNaN(this.speed) || Double.isNaN(this.heading)) {
-            throw new RuntimeException("NaN Virus Detected in Vehicle " + this.role +
+            String role = this instanceof ControlledVehicle ? "EGO" : "NPC";
+            throw new RuntimeException("NaN Virus Detected in Vehicle " + role +
                     "! a=" + this.plannedAcceleration + ", steer=" + this.plannedSteering);
         }
 
@@ -119,12 +120,13 @@ public class Vehicle {
             boolean overlapY = dy < (this.WIDTH / 2.0 + other.WIDTH / 2.0);
 
             if (overlapX && overlapY) {
+
                 // 抛出带有明确责任方的异常
                 String crashMsg = String.format(
                         "💥 致命碰撞！\n肇事车辆：[%s-%d] 在移动后一头撞上了 [%s-%d]！\n" +
                                 "肇事车坐标 X:%.1f Y:%.1f | 被撞车坐标 X:%.1f Y:%.1f",
-                        this.role, this.id,
-                        other.role, other.id,
+                        this.getRole(), this.id,
+                        other.getRole(), other.id,
                         this.x, this.y, other.x, other.y
                 );
                 throw new RuntimeException(crashMsg);

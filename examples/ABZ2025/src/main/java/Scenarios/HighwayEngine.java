@@ -25,6 +25,15 @@ public class HighwayEngine {
         this.dt = dt;
         this.STEPS_PER_SECOND = (int) Math.round(1.0 / dt);
     }
+    public HighwayEngine(double dt, boolean hasEgo, List<Vehicle> initialVehicles) {
+        this.hasEgo = hasEgo;
+        this.dt = dt;
+        this.STEPS_PER_SECOND = (int) Math.round(1.0 / dt);
+        for (Vehicle v : initialVehicles) {
+            this.addVehicle(v);
+            v.injectEngine(this);
+        }
+    }
     public HighwayEngine(double dt) {
         this.hasEgo = false;
         this.dt = dt;
@@ -122,7 +131,7 @@ public class HighwayEngine {
             v.lane_index = lane;
             v.target_lane_index = lane;
 
-            v.id = v.role + "-" + spawned;
+            v.id = ""+spawned;
             v.cooldownTimer = rand.nextDouble() * 1;
 
             double speed = 20.0 + rand.nextGaussian() * 3.0;
@@ -231,7 +240,7 @@ public class HighwayEngine {
 
             g2d.rotate(v.heading);
 
-            if ("EGO".equalsIgnoreCase(v.role)) {
+            if (v instanceof ControlledVehicle) {
                 g2d.setColor(new Color(0, 200, 255));
             } else {
                 g2d.setColor(new Color(255, 80, 80));
@@ -293,13 +302,19 @@ public class HighwayEngine {
                             "💥 致命物理碰撞检测触发！\n" +
                                     "肇事车辆：[%s-%d] 与 [%s-%d] 发生了重叠！\n" +
                                     "接触点坐标 -> V1 X:%.1f Y:%.1f | V2 X:%.1f Y:%.1f",
-                            v1.role, v1.id,
-                            v2.role, v2.id,
+                            v1.getRole(), v1.id,
+                            v2.getRole(), v2.id,
                             v1.x, v1.y, v2.x, v2.y
                     );
                     throw new RuntimeException(crashMsg);
                 }
             }
+        }
+    }
+
+    public StarkShieldApp createStarkShieldApp() {
+        if(this.vehicles == null || this.vehicles.isEmpty()) {
+            throw new IllegalStateException("Engine must have vehicles to create StarkShieldApp");
         }
     }
 }
