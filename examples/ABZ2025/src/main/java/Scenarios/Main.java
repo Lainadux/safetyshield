@@ -37,7 +37,9 @@ public class Main {
         //usage = Usage.STARK;
         if(usage == Usage.RECOVERFROMLOG){
 
-            List<Vehicle> vehicles = StateSaver.loadState("initial_state_1778256486335.json");
+            List<Vehicle> vehicles = StateSaver.loadState("initial_state_1778261060783.json");
+            //vehicles.set(0, vehicles.get(0).ascendAsControlledVehicle());
+            //vehicles.remove(0);
             HighwayEngine engine = new HighwayEngine(0.02, true, false, vehicles);
             int frameCount = 0;
             while (true) {
@@ -55,18 +57,18 @@ public class Main {
                 HighwayEngine engine = new HighwayEngine(dt, true, true, vehicles);
                 StarkShieldApp starkShieldApp = engine.createStarkShieldApp();
             }
-            return;
+
         }
         //HighwayEngine engine = new ControlledHighwayEngine(0.02);
         if(usage == Usage.ENGINE) {
-            HighwayEngine engine = new HighwayEngine(0.02, true);
+            HighwayEngine engine = new HighwayEngine(0.02, false);
             engine.requireCollisionLog = true;
             engine.enhancedCollisionCheckEnabled = true;
             engine.saveInitStateAnyWay = true;
             engine.egoCentered = true;
 
             //engine.populateTraffic(4, 3, 0.0, 50.0);
-            engine.populateTraffic(6, 3, 0.0, 50.0);
+            engine.populateTraffic(8, 3, 0.0, 50.0);
             int frameCount = 0;
             while (true) {
                 engine.step();

@@ -171,7 +171,26 @@ public class EngineUtils {
             return clip(acceleration);
         }
     }
+    public static double desiredGap(Vehicle thisVehicle, Vehicle frontVehicle) {
 
+        if (frontVehicle == null) {
+            return DISTANCE_WANTED;
+        }
+        double dv;
+        double relative_vx = thisVehicle.vx - frontVehicle.vx;
+        double relative_vy = thisVehicle.vy - frontVehicle.vy;
+        double dir_x = Math.cos(thisVehicle.heading);
+        double dir_y = Math.sin(thisVehicle.heading);
+        dv = (relative_vx * dir_x) + (relative_vy * dir_y);
+        double v = thisVehicle.speed;
+        double s0 = DISTANCE_WANTED;
+        double vT = v * TIME_WANTED;
+        double kineticTerm = (v * dv) / (2.0 * Math.sqrt(COMFORT_ACC_MAX * Math.abs(COMFORT_ACC_MIN)));
+        double d_star = s0 + vT + kineticTerm;
+        d_star = Math.max(s0 + vT, d_star);
+
+        return d_star;
+    }
     public static double clip(double accel){
         return Math.min(MAX_ACCELERATION, Math.max(MIN_BRAKE, accel));
     }
@@ -184,7 +203,7 @@ public class EngineUtils {
         if (vehicle instanceof ControlledVehicle) {
             ControlledVehicle ego = (ControlledVehicle) vehicle;
             if(engine.stepCount% engine.STEPS_PER_SECOND == 0 ){
-                ego.fetchDesiredLaneAndTargetSpeed();
+                ego.signify();
             }
             //return ego.target_lane_index;
             return ego.getTargetLaneIndex();
@@ -192,9 +211,20 @@ public class EngineUtils {
         else {
             //if the car is not ready to chang lane
             if(vehicle.cooldownTimer <1.0 || isChangingLane(vehicle)){
-                System.out.println(isChangingLane(vehicle));
-                vehicle.mobiling = false;
-                System.out.println("cooldown timer: " + vehicle.cooldownTimer);
+               //check if there is another driver that is also changing to the same lane
+                for(Vehicle other: environments){
+                    if(other == vehicle) continue;
+                    if(isChangingLane(other) && other.getTargetLaneIndex() == vehicle.getTargetLaneIndex()){
+                        double d =  vehicle.laneDistanceTo(other);
+                        double d_star = desiredGap(vehicle, other);
+                        if(d < d_star){
+
+                            return vehicle.getLaneIndex();
+                        }
+
+                    }
+                }
+
 //                return vehicle.target_lane_index;
                 return vehicle.getTargetLaneIndex();
             }

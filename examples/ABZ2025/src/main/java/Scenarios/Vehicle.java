@@ -195,6 +195,11 @@ public class Vehicle {
             }
         }
     }
+    public double laneDistanceTo(Vehicle other) {
+        if (other == null) return 0.0;
+
+        return other.x - this.x;
+    }
 
 
 }

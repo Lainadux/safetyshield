@@ -42,6 +42,9 @@ public class ControlledVehicle extends Vehicle {
         this.role = "EGO";
     }
 
+    public void signify(){
+        this.fetchDesiredLaneAndTargetSpeed();
+    }
     public void fetchDesiredLaneAndTargetSpeed() {
         HighwayEngine engine = this.getEngine();
 
