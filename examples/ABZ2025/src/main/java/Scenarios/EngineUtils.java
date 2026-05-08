@@ -77,7 +77,8 @@ public class EngineUtils {
 
         Vehicle frontVehicle = null;
         for (Vehicle v : environments) {
-            if (v.lane_index == LaneNo && v.x > thisCar.x) {
+//            if (v.lane_index == LaneNo && v.x > thisCar.x) {
+            if (v.getLaneIndex() == LaneNo && v.x > thisCar.x) {
                 if (frontVehicle == null || v.x < frontVehicle.x) {
                     frontVehicle = v;
                 }
@@ -102,7 +103,8 @@ public class EngineUtils {
 
         Vehicle rearVehicle = null;
         for (Vehicle v : environments) {
-            if (v.lane_index == LaneNo && v.x < thisCar.x) {
+            //if (v.lane_index == LaneNo && v.x < thisCar.x) {
+            if (v.getLaneIndex() == LaneNo && v.x < thisCar.x) {
                 if (rearVehicle == null || v.x > rearVehicle.x) {
                     rearVehicle = v;
                 }
@@ -175,7 +177,8 @@ public class EngineUtils {
     }
     public static boolean isChangingLane(Vehicle vehicle) {
         //System.out.println("vehicle lane index: " + vehicle.lane_index + ", target lane index: " + vehicle.target_lane_index);
-        return vehicle.lane_index != vehicle.target_lane_index;
+        //return vehicle.lane_index != vehicle.target_lane_index;
+        return vehicle.getLaneIndex() != vehicle.getTargetLaneIndex();
     }
     public static int computeTargetLane(Vehicle vehicle, List<Vehicle> environments, List<Integer>possibleLanes, HighwayEngine engine) throws Exception {
         if (vehicle instanceof ControlledVehicle) {
@@ -183,7 +186,8 @@ public class EngineUtils {
             if(engine.stepCount% engine.STEPS_PER_SECOND == 0 ){
                 ego.fetchDesiredLaneAndTargetSpeed();
             }
-            return ego.target_lane_index;
+            //return ego.target_lane_index;
+            return ego.getTargetLaneIndex();
         }
         else {
             //if the car is not ready to chang lane
@@ -191,29 +195,36 @@ public class EngineUtils {
                 System.out.println(isChangingLane(vehicle));
                 vehicle.mobiling = false;
                 System.out.println("cooldown timer: " + vehicle.cooldownTimer);
-                return vehicle.target_lane_index;
+//                return vehicle.target_lane_index;
+                return vehicle.getTargetLaneIndex();
             }
+
             else {
                 Map<Integer, List<Double>> mobilmap = new HashMap<>();
                 vehicle.mobiling = true;
                 List<Integer>newLane = new ArrayList<>();
                 for(int lane: engine.computePossibleLanes(vehicle)){
 
-                    if(lane != vehicle.lane_index){
-                        double current_a = computeAccel(vehicle, environments, vehicle.lane_index);
+//                    if(lane != vehicle.lane_index){
+                    if(lane != vehicle.getLaneIndex()){
+                        //double current_a = computeAccel(vehicle, environments, vehicle.lane_index);
+                        double current_a = computeAccel(vehicle, environments, vehicle.getLaneIndex());
                         double new_a = computeAccel(vehicle, environments, lane);
 
                         double benefit_a_old = 0;
                         double benefit_a_new = 0;
-                        Vehicle benifitCarBehind =  getRearVehicle(vehicle, environments, vehicle.lane_index);
+//                        Vehicle benifitCarBehind =  getRearVehicle(vehicle, environments, vehicle.lane_index);
+                        Vehicle benifitCarBehind =  getRearVehicle(vehicle, environments, vehicle.getLaneIndex());
                         if(benifitCarBehind != null){
                             benefit_a_old = computeAccel(benifitCarBehind, vehicle);
-                            benefit_a_new = computeAccel(benifitCarBehind, getFrontVehicle(vehicle, environments, vehicle.lane_index));
+                            //benefit_a_new = computeAccel(benifitCarBehind, getFrontVehicle(vehicle, environments, vehicle.lane_index));
+                            benefit_a_new = computeAccel(benifitCarBehind, getFrontVehicle(vehicle, environments, vehicle.getLaneIndex()));
                         }
                         double benefit = benefit_a_new - benefit_a_old;
 
                         double karma_a_old = 0;
                         double karma_a_new = 0;
+
                         Vehicle karma_car_behind = getRearVehicle(vehicle, environments, lane);
                         if(karma_car_behind != null){
                             karma_a_old = computeAccel(karma_car_behind, getFrontVehicle(karma_car_behind, environments, lane));
@@ -234,6 +245,7 @@ public class EngineUtils {
 //                        double overall_benefit = (new_a - current_a) + vehicle.politness * (benefit + karma) + bias;
 
                         // the computation of overall_benefit differs in different sources
+
                         double overall_benefit = (new_a - current_a) + vehicle.politeness * (benefit + karma);
 
                         if(overall_benefit > LANE_CHANGE_MIN_ACC_GAIN && karma_a_new > -LANE_CHANGE_MAX_BRAKING_IMPOSED){
@@ -244,7 +256,7 @@ public class EngineUtils {
 
 
 
-                        mobilmap.put(lane, List.of(overall_benefit, new_a - current_a, benefit, karma));
+                        mobilmap.put(lane, List.of(overall_benefit, new_a - current_a, benefit, karma_a_new));
                     }
 
                 }
@@ -260,8 +272,10 @@ public class EngineUtils {
                 }
                 else {
 
-                    return vehicle.lane_index;
+//                    return vehicle.lane_index;
+                    return vehicle.getLaneIndex();
                 }
+
             }
         }
 
@@ -269,7 +283,8 @@ public class EngineUtils {
     }
     public static double computeSteering(Vehicle v) {
 
-        double targetY = v.target_lane_index * LANE_WIDTH;
+       // double targetY = v.target_lane_index * LANE_WIDTH;
+        double targetY = v.getTargetLaneIndex() * LANE_WIDTH;
 
         double deltaY = targetY - v.y;
 

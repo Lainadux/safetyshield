@@ -9,6 +9,12 @@ import java.util.List;
 import java.util.Random;
 
 public class HighwayEngine {
+    boolean egoCentered = false;
+    boolean saveInitStateAnyWay = false;
+    boolean requireRender = true;
+    boolean requireCollisionLog = false;
+    public List<Vehicle> initialVehiclesStates = new ArrayList<>();
+    boolean enhancedCollisionCheckEnabled =false;
     public List<Vehicle> vehicles = new ArrayList<>();
     public double dt;
     public boolean hasEgo = false;
@@ -20,12 +26,17 @@ public class HighwayEngine {
     private final int SCALE = 15;
     private final int LANE_WIDTH = 4;
     public int numLanes = 3;
+
     public HighwayEngine(double dt, boolean hasEgo) {
         this.hasEgo = hasEgo;
         this.dt = dt;
         this.STEPS_PER_SECOND = (int) Math.round(1.0 / dt);
     }
-    public HighwayEngine(double dt, boolean hasEgo, List<Vehicle> initialVehicles) {
+    public HighwayEngine(double dt, boolean hasEgo,boolean enhancedCollisionCheckEnabled, List<Vehicle> initialVehicles) {
+        for(Vehicle v : initialVehicles){
+            initialVehiclesStates.add(v.deepCopySelf());
+        }
+        this.enhancedCollisionCheckEnabled = enhancedCollisionCheckEnabled;
         this.hasEgo = hasEgo;
         this.dt = dt;
         this.STEPS_PER_SECOND = (int) Math.round(1.0 / dt);
@@ -41,7 +52,8 @@ public class HighwayEngine {
     }
     public int[] computePossibleLanes(Vehicle vehicle){
         List<Integer> possibleLanes = new ArrayList<>();
-        for (int i = vehicle.lane_index - 1; i <= vehicle.lane_index + 1; i++) {
+        int currentLane = vehicle.getLaneIndex();
+        for (int i = currentLane - 1; i <= currentLane + 1; i++) {
             if (i >= 0 && i < numLanes) {
                 possibleLanes.add(i);
             }
@@ -55,6 +67,14 @@ public class HighwayEngine {
     }
 
     public void step() throws Exception {
+        if(EngineUtils.isDoubleEqual(this.runTime, 0.0)){
+            for(Vehicle v : vehicles) {
+                this.initialVehiclesStates.add(v.deepCopySelf());
+            }
+            if (saveInitStateAnyWay) {
+                StateSaver.saveState(this.initialVehiclesStates, "initial_state_" + System.currentTimeMillis() + ".json");
+            }
+        }
         for (Vehicle v : vehicles) { v.planAction(vehicles); }
         for (Vehicle v : vehicles) {
             v.applyPhysics();
@@ -70,6 +90,9 @@ public class HighwayEngine {
                 if (v instanceof ControlledVehicle) {
                     v.checkCollision();
                 }
+            }
+            if(enhancedCollisionCheckEnabled) {
+                this.checkCollisions();
             }
         }
         else{
@@ -103,8 +126,8 @@ public class HighwayEngine {
 
             boolean collision = false;
             for (Vehicle existing : this.vehicles) {
-                if (existing.lane_index == lane) {
-
+//                if (existing.lane_index == lane) {
+                if(existing.getLaneIndex() == lane) {
                     if (Math.abs(existing.x - x) < SAFE_SPAWN_DISTANCE) {
                         collision = true;
                         break;
@@ -128,8 +151,16 @@ public class HighwayEngine {
 
             v.x = x;
             v.y = yCenter;
-            v.lane_index = lane;
-            v.target_lane_index = lane;
+           // v.lane_index = lane;
+            //v.target_lane_index = lane;
+            v.setLaneIndex(lane);
+            v.setTargetLaneIndex(lane);
+            if(egoCentered && v.role.equals("EGO")){
+                lane = numLanes/2;
+                v.y = lane * LANE_WIDTH;
+                v.setLaneIndex(lane);
+                v.setTargetLaneIndex(lane);
+            }
 
             v.id = ""+spawned;
             v.cooldownTimer = rand.nextDouble() * 1;
@@ -145,6 +176,8 @@ public class HighwayEngine {
             v.injectEngine(this);
 
 
+
+
             spawned++;
         }
 
@@ -154,6 +187,7 @@ public class HighwayEngine {
 
 
     public void render() {
+
 
         if (frame == null) {
             initUI();
@@ -257,7 +291,8 @@ public class HighwayEngine {
 
 
             g2d.setColor(Color.YELLOW);
-            g2d.drawString(String.format("V:%.1f L:%d", v.speed, v.lane_index), px - 15, py - 20);
+            //g2d.drawString(String.format("V:%.1f L:%d", v.speed, v.lane_index), px - 15, py - 20);
+            g2d.drawString(String.format("V:%.1f L:%d", v.speed, v.getLaneIndex()), px - 15, py - 20);
 
             g2d.drawString(String.format("(vx:%.1f, vy:%.1f)", v.x, v.y), px - 15, py + 30);
 
@@ -268,7 +303,7 @@ public class HighwayEngine {
 
             for (Integer lane : v.mobil.keySet()) {
                 List<Double> mobilValues = v.mobil.get(lane);
-                g2d.drawString(String.format("lane:%d: overall:%.2f,self:%.2f,benefit%.2f", lane, mobilValues.get(0), mobilValues.get(1), mobilValues.get(2)), px - 15, py + 90 + lane * 20);
+                g2d.drawString(String.format("lane:%d: overall:%.2f,self:%.2f,karma%.2f", lane, mobilValues.get(0), mobilValues.get(1), mobilValues.get(3)), px - 15, py + 90 + lane * 20);
             }
             //cooldowntimer
             g2d.drawString(String.format("cool:%.1f", v.cooldownTimer), px - 15, py + 150);
@@ -278,6 +313,8 @@ public class HighwayEngine {
             for(int i =0; i<v.possible_lanes.length; i++) {
                 g2d.drawString(String.format("possible lane:%d", v.possible_lanes[i]), px - 15, py + 190 + i * 20);
             }
+            //karma_a_new
+            //g2d.drawString(String.format("karma_a_new:%.2f", v.karma_a_new), px - 15, py + 250);
         }
     }
    public void checkCollisions() {
@@ -300,12 +337,16 @@ public class HighwayEngine {
                     // 3. 触发致命碰撞！抛出带 ID 的运行时异常
                     String crashMsg = String.format(
                             "💥 致命物理碰撞检测触发！\n" +
-                                    "肇事车辆：[%s-%d] 与 [%s-%d] 发生了重叠！\n" +
+                                    "肇事车辆：[%s-%s] 与 [%s-%s] 发生了重叠！\n" +
                                     "接触点坐标 -> V1 X:%.1f Y:%.1f | V2 X:%.1f Y:%.1f",
                             v1.getRole(), v1.id,
                             v2.getRole(), v2.id,
                             v1.x, v1.y, v2.x, v2.y
                     );
+                    if (requireCollisionLog) {
+                        System.err.println(crashMsg);
+                        StateSaver.saveState(this.vehicles, "engine "+System.currentTimeMillis() + ".json");
+                    }
                     throw new RuntimeException(crashMsg);
                 }
             }
@@ -316,5 +357,11 @@ public class HighwayEngine {
         if(this.vehicles == null || this.vehicles.isEmpty()) {
             throw new IllegalStateException("Engine must have vehicles to create StarkShieldApp");
         }
+        for(Vehicle v : this.vehicles){
+            v.starked = true;
+        }
+        return new StarkShieldApp(this, this.vehicles);
     }
+
+
 }

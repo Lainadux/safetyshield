@@ -34,9 +34,10 @@ public class ControlledVehicle extends Vehicle {
         super();
         this.x = x;
         this.y = y;
-        this.lane_index = lane_index;
+//        this.lane_index = lane_index;
+        this.setLaneIndex(lane_index);
         this.speed = speed;
-        this.target_lane_index = lane_index;
+        this.setTargetLaneIndex(lane_index);
         this.targetSpeed = speed;
         this.role = "EGO";
     }
@@ -56,7 +57,9 @@ public class ControlledVehicle extends Vehicle {
             int[] lanes = this.getEngine().computePossibleLanes(this);
 
             int newLane = lanes[(int)(Math.random() * lanes.length)];
-            this.target_lane_index = newLane;
+            //this.target_lane_index = newLane;
+            //this.setLaneIndex(newLane);
+            this.setTargetLaneIndex(newLane);
 
         }
         else{

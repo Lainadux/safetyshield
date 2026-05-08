@@ -30,21 +30,62 @@ import java.util.Map;
 
 // this class is for HighwayEngine
 public class Vehicle {
+    boolean  starked = false;
     boolean mobiling = false; //for debugging
     public int[] possible_lanes = new int[]{0, 1, 2}; // for debugging
+    public double karma_a_new = 0.0; // for debugging
     public Map<Integer, List<Double>> mobil = new HashMap<>(); // for debugging
     public String id ="default";
     public double politeness = 0.0;
-    private HighwayEngine engine;
+    private transient HighwayEngine engine;
     public HighwayEngine getEngine() {
         if (this.engine == null) {
             throw new IllegalStateException("Engine not injected yet!");
         }
         return this.engine;
     }
+    public ControlledVehicle ascendAsControlledVehicle(){
+        if (this instanceof ControlledVehicle) {
+            return (ControlledVehicle) this;
+        }
+        else{
+            return new ControlledVehicle(this.x, this.y, this.getLaneIndex(), this.speed);
+        }
+    }
     public double cooldownTimer = 0.0;
     public int target_lane_index;
     public int lane_index;
+    public double starked_target_lane_index;
+    public double starked_lane_index;
+    public int getTargetLaneIndex(){
+        if(this.starked) {
+            return (int) this.starked_target_lane_index;
+        }
+        return this.target_lane_index;
+    }
+    public int getLaneIndex(){
+        if(this.starked) {
+            return (int) this.starked_lane_index;
+        }
+        return this.lane_index;
+    }
+    public void setTargetLaneIndex(int laneIndex){
+        if(this.starked) {
+            this.starked_target_lane_index = laneIndex;
+        }
+        else{
+            this.target_lane_index = laneIndex;
+        }
+    }
+    public void setLaneIndex(int laneIndex){
+        if(this.starked) {
+            this.starked_lane_index = laneIndex;
+        }
+        else{
+            this.lane_index = laneIndex;
+        }
+    }
+
     public String role = "NPC";
 
     public double x, y;
@@ -56,6 +97,24 @@ public class Vehicle {
     public final double LENGTH = 5.0;
     public final double WHEELBASE = 5.0;
     public final double WIDTH = 2.0;
+
+    public Vehicle deepCopySelf() {
+        Vehicle copy = new Vehicle();
+        copy.id = this.id;
+        copy.politeness = this.politeness;
+        copy.cooldownTimer = this.cooldownTimer;
+        copy.target_lane_index = this.target_lane_index;
+        copy.lane_index = this.lane_index;
+        copy.x = this.x;
+        copy.y = this.y;
+        copy.vx = this.vx;
+        copy.vy = this.vy;
+        copy.speed = this.speed;
+        copy.heading = this.heading;
+        copy.plannedAcceleration = this.plannedAcceleration;
+        copy.plannedSteering = this.plannedSteering;
+        return copy;
+    }
 
     public String getRole() {
         return this instanceof ControlledVehicle ? "EGO" : "NPC";
@@ -123,12 +182,15 @@ public class Vehicle {
 
                 // 抛出带有明确责任方的异常
                 String crashMsg = String.format(
-                        "💥 致命碰撞！\n肇事车辆：[%s-%d] 在移动后一头撞上了 [%s-%d]！\n" +
+                        "💥 致命碰撞！\n肇事车辆：[%s-%s] 在移动后一头撞上了 [%s-%s]！\n" +
                                 "肇事车坐标 X:%.1f Y:%.1f | 被撞车坐标 X:%.1f Y:%.1f",
-                        this.getRole(), this.id,
-                        other.getRole(), other.id,
+                        this.role, this.id,
+                        other.role, other.id,
                         this.x, this.y, other.x, other.y
                 );
+                if(this.engine.requireCollisionLog){
+                    StateSaver.saveState(this.engine.vehicles, "ego "+ System.currentTimeMillis() + ".json");
+                }
                 throw new RuntimeException(crashMsg);
             }
         }

@@ -27,28 +27,53 @@ import java.util.List;
 public class Main {
     enum Usage{
         ENGINE,
-        STARK
+        STARK,
+        RECOVERFROMLOG
     }
     public static void main(String[] args) throws Exception {
         Usage usage;
-        //usage = Usage.ENGINE;
-        usage = Usage.STARK;
+        usage = Usage.ENGINE;
+        //usage = Usage.RECOVERFROMLOG;
+        //usage = Usage.STARK;
+        if(usage == Usage.RECOVERFROMLOG){
 
+            List<Vehicle> vehicles = StateSaver.loadState("initial_state_1778256486335.json");
+            HighwayEngine engine = new HighwayEngine(0.02, true, false, vehicles);
+            int frameCount = 0;
+            while (true) {
+                engine.step();
+                engine.render();
+
+                frameCount++;
+            }
+        }
 
         if(usage == Usage.STARK){
             double dt = 0.02;
-            List<Vehicle> vehicles = fetchInitialVehicles(dt, 4, 3, 0.0, 50.0);
-            HighwayEngine engine = new HighwayEngine(dt, true, vehicles);
-            StarkShieldApp starkShieldApp = engine.createStarkShieldApp();
-
+            while(true) {
+                List<Vehicle> vehicles = fetchInitialVehicles(dt, 4, 3, 0.0, 50.0);
+                HighwayEngine engine = new HighwayEngine(dt, true, true, vehicles);
+                StarkShieldApp starkShieldApp = engine.createStarkShieldApp();
+            }
             return;
         }
         //HighwayEngine engine = new ControlledHighwayEngine(0.02);
-        HighwayEngine engine = new HighwayEngine(0.02);
+        if(usage == Usage.ENGINE) {
+            HighwayEngine engine = new HighwayEngine(0.02, true);
+            engine.requireCollisionLog = true;
+            engine.enhancedCollisionCheckEnabled = true;
+            engine.saveInitStateAnyWay = true;
+            engine.egoCentered = true;
 
+            //engine.populateTraffic(4, 3, 0.0, 50.0);
+            engine.populateTraffic(6, 3, 0.0, 50.0);
+            int frameCount = 0;
+            while (true) {
+                engine.step();
+                engine.render();
 
-        //engine.populateTraffic(4, 3, 0.0, 50.0);
-        engine.populateTraffic(4, 2, 0.0, 50.0);
+                frameCount++;
+            }
 
 
 //        Vehicle ego = new Vehicle();
@@ -73,15 +98,10 @@ public class Main {
 //        engine.addVehicle(npc);
 //        npc.injectEngine(engine);
 //        ego.injectEngine(engine);
-
-
-        int frameCount = 0;
-        while (true) {
-            engine.step();
-            engine.render();
-
-            frameCount++;
         }
+
+
+
     }
 
     public static List<Vehicle> fetchInitialVehicles(double dt, int numVehicles, int numLanes, double minX, double maxX){

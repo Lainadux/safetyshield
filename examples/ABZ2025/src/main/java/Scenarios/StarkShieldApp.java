@@ -42,8 +42,8 @@ public class StarkShieldApp {
         this.engine = engine;
         this.vehicles = vehicles;
         DataState state = this.getInitialState(vehicles);
-        ControlledSystem system = new ControlledSystem(getController(), (rg, ds) -> ds.apply(getEnvironmentUpdates(rg, ds)), state);
-        EvolutionSequence sequence = new EvolutionSequence(new SilentMonitor("Vehicle"), new DefaultRandomGenerator(), rg -> system, EVOLUTION_SEQUENCE_SIZE);
+        //ControlledSystem system = new ControlledSystem(getController(), (rg, ds) -> ds.apply(getEnvironmentUpdates(rg, ds)), state);
+        //EvolutionSequence sequence = new EvolutionSequence(new SilentMonitor("Vehicle"), new DefaultRandomGenerator(), rg -> system, EVOLUTION_SEQUENCE_SIZE);
     }
     private DataState getInitialState(List<Vehicle> vehicles) {
         Map<Integer, Double> values = new HashMap<>();
@@ -52,8 +52,8 @@ public class StarkShieldApp {
             int offSet = i * VarTable.values().length;
             values.put(offSet + VarTable.politeness.ordinal(), v.politeness);
             values.put(offSet + VarTable.cooldownTimer.ordinal(), v.cooldownTimer);
-            values.put(offSet + VarTable.target_lane_index.ordinal(), v.target_lane_index);
-            values.put(offSet + VarTable.lane_index.ordinal(), v.lane_index);
+            values.put(offSet + VarTable.target_lane_index.ordinal(), v.starked_target_lane_index);
+            values.put(offSet + VarTable.lane_index.ordinal(), v.starked_lane_index);
             values.put(offSet + VarTable.x.ordinal(), v.x);
             values.put(offSet + VarTable.y.ordinal(), v.y);
             values.put(offSet + VarTable.vx.ordinal(), v.vx);
