@@ -45,11 +45,12 @@ public class Vehicle {
         return this.engine;
     }
     public ControlledVehicle ascendAsControlledVehicle(){
+        this.id = "0";
         if (this instanceof ControlledVehicle) {
             return (ControlledVehicle) this;
         }
         else{
-            return new ControlledVehicle(this.x, this.y, this.getLaneIndex(), this.speed);
+            return new ControlledVehicle(this.x, this.y, this.getLaneIndex(), this.speed, this.targetSpeed);
         }
     }
     public double cooldownTimer = 0.0;
@@ -101,10 +102,13 @@ public class Vehicle {
     public Vehicle deepCopySelf() {
         Vehicle copy = new Vehicle();
         copy.id = this.id;
+        copy.starked = this.starked;
         copy.politeness = this.politeness;
         copy.cooldownTimer = this.cooldownTimer;
-        copy.target_lane_index = this.target_lane_index;
-        copy.lane_index = this.lane_index;
+//        copy.target_lane_index = this.target_lane_index;
+//        copy.lane_index = this.lane_index;
+        copy.setTargetLaneIndex(this.getTargetLaneIndex());
+        copy.setLaneIndex(this.getLaneIndex());
         copy.x = this.x;
         copy.y = this.y;
         copy.vx = this.vx;
@@ -113,6 +117,7 @@ public class Vehicle {
         copy.heading = this.heading;
         copy.plannedAcceleration = this.plannedAcceleration;
         copy.plannedSteering = this.plannedSteering;
+        copy.targetSpeed = this.targetSpeed;
         return copy;
     }
 
@@ -132,8 +137,9 @@ public class Vehicle {
     public double targetSpeed = 25;
     public void planAction(List<Vehicle> allVehicles) throws Exception {
 
-        this.target_lane_index = EngineUtils.computeTargetLane(this, allVehicles, List.of(0, 1), this.engine);
-        this.plannedAcceleration = Math.min(EngineUtils.computeAccel(this, allVehicles, target_lane_index), EngineUtils.computeAccel(this, allVehicles, lane_index));
+        //this.target_lane_index = EngineUtils.computeTargetLane(this, allVehicles, List.of(0, 1), this.engine);
+        this.setTargetLaneIndex(EngineUtils.computeTargetLane(this, allVehicles, List.of(0, 1), this.engine));
+        this.plannedAcceleration = Math.min(EngineUtils.computeAccel(this, allVehicles, this.getTargetLaneIndex()), EngineUtils.computeAccel(this, allVehicles, this.getLaneIndex()));
         this.plannedSteering = EngineUtils.computeSteering(this);
     }
 
@@ -200,6 +206,16 @@ public class Vehicle {
 
         return other.x - this.x;
     }
+    //重写print
+
+    public String toString() {
+//        /输出除了debug外的所有属性， 包括stark
+        return String.format("Vehicle{id='%s', role='%s', x=%.1f, y=%.1f, lane_index=%d, target_lane_index=%d, speed=%.1f, plannedAcceleration=%.1f, plannedSteering=%.1f, starked=%b" +
+                        ", targetSpeed=%.1f, cooldownTimer=%.1f, politeness=%.2f, timestamp=%.2f}",
+                id, role, x, y, getLaneIndex(), getTargetLaneIndex(), speed, plannedAcceleration, plannedSteering, starked, targetSpeed, cooldownTimer, politeness, engine != null ? engine.stepCount * engine.dt : 0.0
+        );
+    }
+
 
 
 }

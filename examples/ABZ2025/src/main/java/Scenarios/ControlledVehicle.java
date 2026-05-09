@@ -31,15 +31,17 @@ public class ControlledVehicle extends Vehicle {
         super();
         this.role = "EGO";
     }
-    public ControlledVehicle(double x, double y, int lane_index, double speed) {
+    public ControlledVehicle(double x, double y, int lane_index, double speed, double targetSpeed) {
+
         super();
+        this.id = "0";
         this.x = x;
         this.y = y;
 //        this.lane_index = lane_index;
         this.setLaneIndex(lane_index);
         this.speed = speed;
         this.setTargetLaneIndex(lane_index);
-        this.targetSpeed = speed;
+        this.targetSpeed = targetSpeed;
         this.role = "EGO";
     }
 
@@ -66,7 +68,7 @@ public class ControlledVehicle extends Vehicle {
 
     }
     public ControlledVehicle cloneForSimulation() {
-        ControlledVehicle clone = new ControlledVehicle(this.x, this.y, this.getLaneIndex(), this.speed);
+        ControlledVehicle clone = new ControlledVehicle(this.x, this.y, this.getLaneIndex(), this.speed, this.targetSpeed);
         clone.setTargetLaneIndex(this.getTargetLaneIndex());
         clone.targetSpeed = this.targetSpeed;
         clone.simulated = true;
@@ -77,6 +79,14 @@ public class ControlledVehicle extends Vehicle {
 
         if(engine.stepCount% engine.STEPS_PER_SECOND == 0 ){
            this.randomActionGenerator();
+        }
+
+    }
+    public void fetchDesiredLaneAndTargetSpeed(boolean random) throws Exception {
+        if(random) this.randomActionGenerator();
+        else{
+            throw new Exception("try random");
+
         }
 
     }

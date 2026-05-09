@@ -27,13 +27,24 @@ public class HighwayEngine {
     private final int LANE_WIDTH = 4;
     public int numLanes = 3;
 
-    public Vehicle getEgoVehicle() {
+
+    public ControlledVehicle getEgoVehicle() {
         for (Vehicle v : vehicles) {
             if (v instanceof ControlledVehicle) {
-                return v;
+                return (ControlledVehicle) v;
             }
         }
         throw new IllegalStateException("No EGO vehicle found in the engine!");
+    }
+    public void setEgoVehicle(ControlledVehicle ego) {
+        // Remove existing EGO if present
+        vehicles.removeIf(v -> v instanceof ControlledVehicle);
+        // Add the new EGO vehicle
+        this.addVehicle(ego);
+        ego.injectEngine(this);
+    }
+    public HighwayEngine(){
+
     }
     public HighwayEngine(double dt, boolean hasEgo) {
         this.hasEgo = hasEgo;
@@ -93,7 +104,9 @@ public class HighwayEngine {
             }
         }
 
-        for (Vehicle v : vehicles) { v.planAction(vehicles); }
+        for (Vehicle v : vehicles) {
+            v.planAction(vehicles);
+        }
         for (Vehicle v : vehicles) {
             v.applyPhysics();
         }
@@ -200,6 +213,7 @@ public class HighwayEngine {
             if (hasEgo && spawned == 0) {
                 v = new ControlledVehicle();
                 v.role = "EGO";
+
             }
             else {
                 v = new Vehicle();
@@ -361,10 +375,11 @@ public class HighwayEngine {
             g2d.drawString(String.format("T:%.1f", v.targetSpeed), px - 15, py + 70);
 
 
-            for (Integer lane : v.mobil.keySet()) {
-                List<Double> mobilValues = v.mobil.get(lane);
-                g2d.drawString(String.format("lane:%d: overall:%.2f,self:%.2f,karmanew%.2f", lane, mobilValues.get(0), mobilValues.get(1), mobilValues.get(3)), px - 15, py + 90 + lane * 20);
-            }
+//            for (Integer lane : v.mobil.keySet()) {
+//                List<Double> mobilValues = v.mobil.get(lane);
+//                g2d.drawString(String.format("lane:%d: overall:%.2f,self:%.2f,karmanew%.2f", lane, mobilValues.get(0), mobilValues.get(1), mobilValues.get(3)), px - 15, py + 90 + lane * 20);
+//            }
+
             //cooldowntimer
             g2d.drawString(String.format("cool:%.1f", v.cooldownTimer), px - 15, py + 150);
             //mobiling
@@ -373,6 +388,8 @@ public class HighwayEngine {
             for(int i =0; i<v.possible_lanes.length; i++) {
                 g2d.drawString(String.format("possible lane:%d", v.possible_lanes[i]), px - 15, py + 190 + i * 20);
             }
+
+            g2d.drawString(String.format("id:%s", v.id), px - 15, py);
             //karma_a_new
             //g2d.drawString(String.format("karma_a_new:%.2f", v.karma_a_new), px - 15, py + 250);
         }

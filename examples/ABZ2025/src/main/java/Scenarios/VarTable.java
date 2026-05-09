@@ -23,6 +23,7 @@
 package Scenarios;
 
 public enum VarTable {
+    id,
     politeness,
     cooldownTimer,
     target_lane_index,
@@ -35,6 +36,7 @@ public enum VarTable {
     heading,
     plannedAcceleration,
     plannedSteering,
+    targetSpeed,
 
     role //0forEGO, 1forNPC
 }

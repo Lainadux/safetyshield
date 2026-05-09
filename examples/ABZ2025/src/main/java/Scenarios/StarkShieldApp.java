@@ -38,7 +38,7 @@ import java.util.Map;
 public class StarkShieldApp {
     public int predictFutureSeconds = 1;
 
-    private static final int EVOLUTION_SEQUENCE_SIZE = 50;
+    private static final int EVOLUTION_SEQUENCE_SIZE = 1;
     public double dt = 0;
     private HighwayEngine engine;
     private List<Vehicle> vehicles;
@@ -46,13 +46,14 @@ public class StarkShieldApp {
     private DataState initialState;
     private ControlledSystem system;
     private EvolutionSequence sequence;
+
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles) {
         this.engine = engine;
         this.dt = engine.dt;
         this.STEPS_PER_SECOND = engine.STEPS_PER_SECOND;
 
         this.vehicles = vehicles;
-        for(Vehicle v:vehicles){
+        for (Vehicle v : vehicles) {
             v.starked = true;
             v.starked_lane_index = v.lane_index;
             v.starked_target_lane_index = v.target_lane_index;
@@ -62,22 +63,35 @@ public class StarkShieldApp {
         sequence = new EvolutionSequence(new SilentMonitor("Vehicle"), new DefaultRandomGenerator(), rg -> system, EVOLUTION_SEQUENCE_SIZE);
         printSummary();
     }
+
     private void printSummary() {
-        SampleSet<SystemState> dss = sequence.get(this.predictFutureSeconds * STEPS_PER_SECOND - 1);
+        //SampleSet<SystemState> dss = sequence.get(this.predictFutureSeconds * STEPS_PER_SECOND - 1);
+        SampleSet<SystemState> dss = sequence.get(1);
         dss.stream().limit(1).forEach(ss -> {
             System.out.println("Summary of the evolution sequence:");
             DataState ds = ss.getDataState();
-            for(int i = 0; i < vehicles.size(); i++) {
+            for (int i = 0; i < vehicles.size(); i++) {
+                if(i == vehicles.size()-1){
+                    System.out.println();
+                }
                 Vehicle v = stateToVehicle(ds, i);
-                System.out.println("Vehicle " + i + ": x=" + v.x + ", y=" + v.y + ", lane_index=" + v.getLaneIndex() + ", target_lane_index=" + v.getTargetLaneIndex() + ", speed=" + v.speed);
+                System.out.println(v);
             }
         });
     }
+
     private DataState getInitialState(List<Vehicle> vehicles) {
+        System.out.println("initial state fetched by stark:");
+        for (Vehicle v : vehicles) {
+
+            System.out.println(v);
+        }
+
         Map<Integer, Double> values = new HashMap<>();
         for (int i = 0; i < vehicles.size(); i++) {
             Vehicle v = vehicles.get(i);
             int offSet = i * VarTable.values().length;
+            values.put(offSet + VarTable.id.ordinal(),Double.valueOf(v.id));
             values.put(offSet + VarTable.politeness.ordinal(), v.politeness);
             values.put(offSet + VarTable.cooldownTimer.ordinal(), v.cooldownTimer);
             values.put(offSet + VarTable.target_lane_index.ordinal(), v.starked_target_lane_index);
@@ -91,11 +105,16 @@ public class StarkShieldApp {
             values.put(offSet + VarTable.plannedAcceleration.ordinal(), v.plannedAcceleration);
             values.put(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering);
             values.put(offSet + VarTable.role.ordinal(), v.role.equals("EGO") ? 0.0 : 1.0);
+            values.put(offSet + VarTable.targetSpeed.ordinal(), v.targetSpeed);
+            if(v.role.equals("EGO")){
+                System.out.println("starked ego intention targetspeed: " + v.targetSpeed + ", current speed: " + v.speed);
+            }
         }
 
         return new DataState(vehicles.size() * VarTable.values().length, i -> values.getOrDefault(i, Double.NaN));
     }
-    public  Controller getController() {
+
+    public Controller getController() {
         ControllerRegistry registry = new ControllerRegistry();
         Controller doNothing = Controller.doAction(
                 (_rg, _ds) -> List.of(),
@@ -103,28 +122,48 @@ public class StarkShieldApp {
         registry.set("doNothing", doNothing);
         return new ExecController(registry.reference("doNothing"));
     }
-    public  List<DataStateUpdate> getEnvironmentUpdates(RandomGenerator rg, DataState state)  {
+
+    public List<DataStateUpdate> getEnvironmentUpdates(RandomGenerator rg, DataState state) {
         List<DataStateUpdate> updates = new LinkedList<>();
         int numsVehicles = vehicles.size();
-        List<Vehicle> vehicles = new LinkedList<>();
-        for(int i = 0; i < numsVehicles; i++) {
+        List<Vehicle> localVehicles = new LinkedList<>();
+
+        for (int i = 0; i < numsVehicles; i++) {
             Vehicle v = stateToVehicle(state, i);
-            vehicles.add(v);
+            localVehicles.add(v);
         }
-        engine.vehicles = vehicles;
-        try{
-            engine.step();
+
+
+        HighwayEngine sandboxEngine = new HighwayEngine();
+        sandboxEngine.dt = this.dt;
+        sandboxEngine.STEPS_PER_SECOND = this.STEPS_PER_SECOND;
+        sandboxEngine.vehicles = localVehicles;
+
+        for (Vehicle v : localVehicles) {
+            v.injectEngine(sandboxEngine);
         }
-        catch (Exception e){
+        System.out.println("stark sandbox engine initialized with state from real world:");
+        for (Vehicle v : localVehicles) {
+            System.out.println(v);
+        }
+        try {
+            sandboxEngine.step();
+        } catch (Exception e) {
             e.printStackTrace();
         }
-        for(int i = 0; i < numsVehicles; i++) {
-            Vehicle v = engine.vehicles.get(i);
+        System.out.println("stark sandbox engine after step:");
+        for (int i = 0; i < numsVehicles; i++) {
+            Vehicle v = localVehicles.get(i);
             int offSet = i * VarTable.values().length;
+
+            System.out.println(v);
+            if(v.role.equals("EGO")){
+                System.out.println();
+            }
             updates.add(new DataStateUpdate(offSet + VarTable.politeness.ordinal(), v.politeness));
             updates.add(new DataStateUpdate(offSet + VarTable.cooldownTimer.ordinal(), v.cooldownTimer));
-            updates.add(new DataStateUpdate(offSet + VarTable.target_lane_index.ordinal(), v.starked_target_lane_index));
-            updates.add(new DataStateUpdate(offSet + VarTable.lane_index.ordinal(), v.starked_lane_index));
+            updates.add(new DataStateUpdate(offSet + VarTable.target_lane_index.ordinal(), v.getTargetLaneIndex()));
+            updates.add(new DataStateUpdate(offSet + VarTable.lane_index.ordinal(), v.getLaneIndex()));
             updates.add(new DataStateUpdate(offSet + VarTable.x.ordinal(), v.x));
             updates.add(new DataStateUpdate(offSet + VarTable.y.ordinal(), v.y));
             updates.add(new DataStateUpdate(offSet + VarTable.vx.ordinal(), v.vx));
@@ -133,14 +172,16 @@ public class StarkShieldApp {
             updates.add(new DataStateUpdate(offSet + VarTable.heading.ordinal(), v.heading));
             updates.add(new DataStateUpdate(offSet + VarTable.plannedAcceleration.ordinal(), v.plannedAcceleration));
             updates.add(new DataStateUpdate(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering));
+            updates.add(new DataStateUpdate(offSet + VarTable.targetSpeed.ordinal(), v.targetSpeed));
         }
-        return updates;
 
+        return updates;
     }
 
     public static Vehicle stateToVehicle(DataState state, int vehicleIndex) {
         int offSet = vehicleIndex * VarTable.values().length;
         Vehicle v = new Vehicle();
+        v.id = String.valueOf((int) state.get(offSet + VarTable.id.ordinal()));
         v.politeness = state.get(offSet + VarTable.politeness.ordinal());
         v.cooldownTimer = state.get(offSet + VarTable.cooldownTimer.ordinal());
         v.starked_target_lane_index = state.get(offSet + VarTable.target_lane_index.ordinal());
@@ -154,6 +195,13 @@ public class StarkShieldApp {
         v.plannedAcceleration = state.get(offSet + VarTable.plannedAcceleration.ordinal());
         v.plannedSteering = state.get(offSet + VarTable.plannedSteering.ordinal());
         v.role = state.get(offSet + VarTable.role.ordinal()) == 0.0 ? "EGO" : "NPC";
+        v.starked = true;
+        v.targetSpeed = state.get(offSet + VarTable.targetSpeed.ordinal());
+        if(v.role.equals("EGO")){
+            return new ProtectedControlledVehicle(v);
+        }
+
         return v;
     }
 }
+

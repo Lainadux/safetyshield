@@ -29,13 +29,47 @@ public class Main {
     enum Usage{
         ENGINE,
         STARK,
-        RECOVERFROMLOG
+        RECOVERFROMLOG,
+        DEBUG
     }
     public static void main(String[] args) throws Exception {
         Usage usage;
         usage = Usage.ENGINE;
         usage = Usage.RECOVERFROMLOG;
-       usage = Usage.STARK;
+        usage = Usage.STARK;
+       // usage = Usage.DEBUG;
+        if(usage == Usage.DEBUG){
+            HighwayEngine highwayEngine = new HighwayEngine(0.02, true);
+            HighwayEngine highwayEngine2 = new HighwayEngine(0.02, true);
+            highwayEngine.populateTraffic(6, 3, 0.0, 50.0);
+            List<Vehicle> vehicles = highwayEngine.vehicles;
+            ControlledVehicle egoVehicle = highwayEngine.getEgoVehicle();
+            ProtectedControlledVehicle protectedControlledVehicle = new ProtectedControlledVehicle(egoVehicle);
+            protectedControlledVehicle.fetchDesiredLaneAndTargetSpeed(true);
+
+            highwayEngine.setEgoVehicle(protectedControlledVehicle);
+            List<Vehicle> vehicles2 = new ArrayList<>();
+            for(Vehicle v : vehicles){
+                if(v instanceof ControlledVehicle){
+                    ControlledVehicle cv =  v.deepCopySelf().ascendAsControlledVehicle();
+                    cv.simulated = true;
+                    vehicles2.add(cv);
+                }
+                else{
+                    v = v.deepCopySelf();
+                    vehicles2.add(v);
+                }
+            }
+            highwayEngine2.vehicles = vehicles2;
+            for(Vehicle v : vehicles2){
+                v.injectEngine(highwayEngine2);
+            }
+            highwayEngine.step();
+            highwayEngine2.step();
+            System.out.println(highwayEngine2.vehicles);
+            System.out.println(highwayEngine.vehicles);
+
+        }
         if(usage == Usage.RECOVERFROMLOG){
 
             List<Vehicle> vehicles = StateSaver.loadState("bug1.json");
@@ -57,38 +91,56 @@ public class Main {
             double dt = 0.02;
             HighwayEngine realWorld = new HighwayEngine(dt, true);
             realWorld.populateTraffic(8, 3, 0.0, 50.0);
-            Vehicle egoVehicle = realWorld.getEgoVehicle();
+            ControlledVehicle egoVehicle = realWorld.getEgoVehicle();
+            ProtectedControlledVehicle protectedControlledVehicle = new ProtectedControlledVehicle(egoVehicle);
+            realWorld.setEgoVehicle(protectedControlledVehicle);
+
             boolean isSafe = true;
-            while (realWorld.runTime < 1 ) {
 
-                if (realWorld.stepCount  == realWorld.STEPS_PER_SECOND -1) {
-                    {
-                        System.out.println("Step: " + realWorld.stepCount + ", Time: " + realWorld.runTime);
-                        List<Vehicle> vehicles = new ArrayList<>();
-                        for(Vehicle v: realWorld.vehicles){
-                           if(v instanceof ControlledVehicle){
-                               ControlledVehicle cv =  v.deepCopySelf().ascendAsControlledVehicle();
-                               cv.simulated = true;
-                               vehicles.add(cv);
-                           }
-                           else{
-                               v = v.deepCopySelf();
-                               vehicles.add(v);
-                           }
-                        }
-                        HighwayEngine engine = new HighwayEngine(dt, true, true, vehicles);
-                        StarkShieldApp starkShieldApp = engine.createStarkShieldApp();
+           // while (realWorld.stepCount % realWorld.STEPS_PER_SECOND < realWorld.STEPS_PER_SECOND - 1) {
+            while (realWorld.stepCount  <=  0) {
+                //when the ego has taken an decision
+                if(realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0){
+                    protectedControlledVehicle.fetchDesiredLaneAndTargetSpeed();
+                    System.out.println("real world scenario");
+                    for(Vehicle v: realWorld.vehicles){
+                        System.out.println(v);
                     }
-
                 }
+               //testing simulation
+                if(realWorld.stepCount == 0){
+                    //egoVehicle.fetchDesiredLaneAndTargetSpeed();
+
+                    System.out.println("Step: " + realWorld.stepCount + ", Time: " + realWorld.runTime);
+                    List<Vehicle> vehicles = new ArrayList<>();
+                    for(Vehicle v: realWorld.vehicles){
+                        if(v instanceof ControlledVehicle){
+                            ControlledVehicle cv =  v.deepCopySelf().ascendAsControlledVehicle();
+                            cv.simulated = true;
+                            vehicles.add(cv);
+                        }
+                        else{
+                            v = v.deepCopySelf();
+                            vehicles.add(v);
+                        }
+                    }
+                    HighwayEngine engine = new HighwayEngine(dt, true, true, vehicles);
+                    StarkShieldApp starkShieldApp = engine.createStarkShieldApp();
+                }
+
+
                 if (isSafe) {
                     realWorld.step();
                 } else {
-                    realWorld.step(egoVehicle.lane_index, egoVehicle.targetSpeed);
+                    realWorld.step(protectedControlledVehicle.lane_index, protectedControlledVehicle.targetSpeed<0?0:protectedControlledVehicle.targetSpeed-5);
                 }
                 realWorld.render();
 
 
+            }
+            System.out.println("end state of real world scenario");
+            for(Vehicle v: realWorld.vehicles){
+                System.out.println(v);
             }
         }
         //HighwayEngine engine = new ControlledHighwayEngine(0.02);
