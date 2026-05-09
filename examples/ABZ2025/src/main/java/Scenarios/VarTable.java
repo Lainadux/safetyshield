@@ -35,4 +35,6 @@ public enum VarTable {
     heading,
     plannedAcceleration,
     plannedSteering,
+
+    role //0forEGO, 1forNPC
 }

@@ -40,6 +40,12 @@ public class HighwayEngine {
         this.dt = dt;
         this.STEPS_PER_SECOND = (int) Math.round(1.0 / dt);
     }
+    public HighwayEngine(double dt, boolean hasEgo, int numLanes) {
+        this.hasEgo = hasEgo;
+        this.dt = dt;
+        this.STEPS_PER_SECOND = (int) Math.round(1.0 / dt);
+        this.numLanes = numLanes;
+    }
     public HighwayEngine(double dt, boolean hasEgo,boolean enhancedCollisionCheckEnabled, List<Vehicle> initialVehicles) {
         for(Vehicle v : initialVehicles){
             initialVehiclesStates.add(v.deepCopySelf());
@@ -73,6 +79,9 @@ public class HighwayEngine {
     public void addVehicle(Vehicle v) {
         this.vehicles.add(v);
     }
+
+
+
 
     public void step() throws Exception {
         if(EngineUtils.isDoubleEqual(this.runTime, 0.0)){

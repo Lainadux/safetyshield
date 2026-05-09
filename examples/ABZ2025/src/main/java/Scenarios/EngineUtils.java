@@ -232,7 +232,7 @@ public class EngineUtils {
 
             else {
                 if(engine.runTime>2.5){
-                    System.out.println("Vehicle " + vehicle.id + " at lane " + vehicle.getLaneIndex() + " with speed " + vehicle.speed);
+                    //System.out.println("Vehicle " + vehicle.id + " at lane " + vehicle.getLaneIndex() + " with speed " + vehicle.speed);
                 }
                 Map<Integer, List<Double>> mobilmap = new HashMap<>();
                 vehicle.mobiling = true;
@@ -263,7 +263,7 @@ public class EngineUtils {
                             karma_a_old = computeAccel(karma_car_behind, getFrontVehicle(karma_car_behind, environments, lane));
                             karma_a_new = computeAccel(karma_car_behind, vehicle);
 
-                            System.out.println("karma_old: " + karma_a_old + ", karma_new: " + karma_a_new);
+                            //System.out.println("karma_old: " + karma_a_old + ", karma_new: " + karma_a_new);
                         }
                         double karma = karma_a_new - karma_a_old;
                         //european version
@@ -323,7 +323,7 @@ public class EngineUtils {
         if(rearVehicle instanceof ControlledVehicle){
             //
             double TTC = (vehicle.x - rearVehicle.x - rearVehicle.LENGTH) / Math.max(1e-5, rearVehicle.vx - vehicle.vx);
-            System.out.println("Time to collision with rear vehicle: " + TTC);
+            //System.out.println("Time to collision with rear vehicle: " + TTC);
             return TTC > 1.0;
         }
         return newKarma > -LANE_CHANGE_MAX_BRAKING_IMPOSED;

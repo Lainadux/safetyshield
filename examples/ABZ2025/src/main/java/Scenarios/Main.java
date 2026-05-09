@@ -34,11 +34,11 @@ public class Main {
     public static void main(String[] args) throws Exception {
         Usage usage;
         usage = Usage.ENGINE;
-        //usage = Usage.RECOVERFROMLOG;
-       //usage = Usage.STARK;
+        usage = Usage.RECOVERFROMLOG;
+       usage = Usage.STARK;
         if(usage == Usage.RECOVERFROMLOG){
 
-            List<Vehicle> vehicles = StateSaver.loadState("bug2.json");
+            List<Vehicle> vehicles = StateSaver.loadState("bug1.json");
             vehicles.set(0, vehicles.get(0).ascendAsControlledVehicle());
             //vehicles.remove(1);
             //vehicles.remove(4);
@@ -58,19 +58,21 @@ public class Main {
             HighwayEngine realWorld = new HighwayEngine(dt, true);
             realWorld.populateTraffic(8, 3, 0.0, 50.0);
             Vehicle egoVehicle = realWorld.getEgoVehicle();
-            boolean isSafe = false;
-            while (realWorld.runTime < 40) {
-                System.out.println("Step: " + realWorld.stepCount + ", Time: " + realWorld.runTime);
-                if (realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0) {
+            boolean isSafe = true;
+            while (realWorld.runTime < 1 ) {
+
+                if (realWorld.stepCount  == realWorld.STEPS_PER_SECOND -1) {
                     {
+                        System.out.println("Step: " + realWorld.stepCount + ", Time: " + realWorld.runTime);
                         List<Vehicle> vehicles = new ArrayList<>();
                         for(Vehicle v: realWorld.vehicles){
                            if(v instanceof ControlledVehicle){
-                               ControlledVehicle cv = (ControlledVehicle) v;
+                               ControlledVehicle cv =  v.deepCopySelf().ascendAsControlledVehicle();
                                cv.simulated = true;
                                vehicles.add(cv);
                            }
                            else{
+                               v = v.deepCopySelf();
                                vehicles.add(v);
                            }
                         }
