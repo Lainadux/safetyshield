@@ -30,7 +30,7 @@ import java.util.Map;
 
 // this class is for HighwayEngine
 public class Vehicle {
-    boolean  starked = false;
+
     boolean mobiling = false; //for debugging
     public int[] possible_lanes = new int[]{0, 1, 2}; // for debugging
     public double karma_a_new = 0.0; // for debugging
@@ -56,35 +56,25 @@ public class Vehicle {
     public double cooldownTimer = 0.0;
     public int target_lane_index;
     public int lane_index;
-    public double starked_target_lane_index;
-    public double starked_lane_index;
+    //public double starked_target_lane_index;
+    //public double starked_lane_index;
     public int getTargetLaneIndex(){
-        if(this.starked) {
-            return (int) this.starked_target_lane_index;
-        }
+//        if(this.starked) {
+//            return (int) this.starked_target_lane_index;
+//        }
         return this.target_lane_index;
     }
     public int getLaneIndex(){
-        if(this.starked) {
-            return (int) this.starked_lane_index;
-        }
+
         return this.lane_index;
     }
     public void setTargetLaneIndex(int laneIndex){
-        if(this.starked) {
-            this.starked_target_lane_index = laneIndex;
-        }
-        else{
+
             this.target_lane_index = laneIndex;
-        }
+
     }
     public void setLaneIndex(int laneIndex){
-        if(this.starked) {
-            this.starked_lane_index = laneIndex;
-        }
-        else{
-            this.lane_index = laneIndex;
-        }
+        this.lane_index = laneIndex;
     }
 
     public String role = "NPC";
@@ -102,11 +92,8 @@ public class Vehicle {
     public Vehicle deepCopySelf() {
         Vehicle copy = new Vehicle();
         copy.id = this.id;
-        copy.starked = this.starked;
         copy.politeness = this.politeness;
         copy.cooldownTimer = this.cooldownTimer;
-//        copy.target_lane_index = this.target_lane_index;
-//        copy.lane_index = this.lane_index;
         copy.setTargetLaneIndex(this.getTargetLaneIndex());
         copy.setLaneIndex(this.getLaneIndex());
         copy.x = this.x;
@@ -210,9 +197,9 @@ public class Vehicle {
 
     public String toString() {
 //        /输出除了debug外的所有属性， 包括stark
-        return String.format("Vehicle{id='%s', role='%s', x=%.1f, y=%.1f, lane_index=%d, target_lane_index=%d, speed=%.1f, plannedAcceleration=%.1f, plannedSteering=%.1f, starked=%b" +
+        return String.format("Vehicle{id='%s', role='%s', x=%.1f, y=%.1f, lane_index=%d, target_lane_index=%d, speed=%.1f, plannedAcceleration=%.1f, plannedSteering=%.1f, " +
                         ", targetSpeed=%.1f, cooldownTimer=%.1f, politeness=%.2f, timestamp=%.2f}",
-                id, role, x, y, getLaneIndex(), getTargetLaneIndex(), speed, plannedAcceleration, plannedSteering, starked, targetSpeed, cooldownTimer, politeness, engine != null ? engine.stepCount * engine.dt : 0.0
+                id, role, x, y, getLaneIndex(), getTargetLaneIndex(), speed, plannedAcceleration, plannedSteering, targetSpeed, cooldownTimer, politeness, engine != null ? engine.stepCount * engine.dt : 0.0
         );
     }
 

@@ -53,11 +53,6 @@ public class StarkShieldApp {
         this.STEPS_PER_SECOND = engine.STEPS_PER_SECOND;
 
         this.vehicles = vehicles;
-        for (Vehicle v : vehicles) {
-            v.starked = true;
-            v.starked_lane_index = v.lane_index;
-            v.starked_target_lane_index = v.target_lane_index;
-        }
         initialState = this.getInitialState(vehicles);
         system = new ControlledSystem(getController(), (rg, ds) -> ds.apply(this.getEnvironmentUpdates(rg, ds)), initialState);
         sequence = new EvolutionSequence(new SilentMonitor("Vehicle"), new DefaultRandomGenerator(), rg -> system, EVOLUTION_SEQUENCE_SIZE);
@@ -65,8 +60,8 @@ public class StarkShieldApp {
     }
 
     private void printSummary() {
-        //SampleSet<SystemState> dss = sequence.get(this.predictFutureSeconds * STEPS_PER_SECOND - 1);
-        SampleSet<SystemState> dss = sequence.get(1);
+        SampleSet<SystemState> dss = sequence.get(this.predictFutureSeconds * STEPS_PER_SECOND - 1);
+       // SampleSet<SystemState> dss = sequence.get(1);
         dss.stream().limit(1).forEach(ss -> {
             System.out.println("Summary of the evolution sequence:");
             DataState ds = ss.getDataState();
@@ -94,8 +89,8 @@ public class StarkShieldApp {
             values.put(offSet + VarTable.id.ordinal(),Double.valueOf(v.id));
             values.put(offSet + VarTable.politeness.ordinal(), v.politeness);
             values.put(offSet + VarTable.cooldownTimer.ordinal(), v.cooldownTimer);
-            values.put(offSet + VarTable.target_lane_index.ordinal(), v.starked_target_lane_index);
-            values.put(offSet + VarTable.lane_index.ordinal(), v.starked_lane_index);
+            values.put(offSet + VarTable.target_lane_index.ordinal(), (double)v.getTargetLaneIndex());
+            values.put(offSet + VarTable.lane_index.ordinal(), (double)v.getLaneIndex());
             values.put(offSet + VarTable.x.ordinal(), v.x);
             values.put(offSet + VarTable.y.ordinal(), v.y);
             values.put(offSet + VarTable.vx.ordinal(), v.vx);
@@ -184,8 +179,8 @@ public class StarkShieldApp {
         v.id = String.valueOf((int) state.get(offSet + VarTable.id.ordinal()));
         v.politeness = state.get(offSet + VarTable.politeness.ordinal());
         v.cooldownTimer = state.get(offSet + VarTable.cooldownTimer.ordinal());
-        v.starked_target_lane_index = state.get(offSet + VarTable.target_lane_index.ordinal());
-        v.starked_lane_index = state.get(offSet + VarTable.lane_index.ordinal());
+        v.target_lane_index = (int)state.get(offSet + VarTable.target_lane_index.ordinal());
+        v.lane_index = (int)state.get(offSet + VarTable.lane_index.ordinal());
         v.x = state.get(offSet + VarTable.x.ordinal());
         v.y = state.get(offSet + VarTable.y.ordinal());
         v.vx = state.get(offSet + VarTable.vx.ordinal());
@@ -195,7 +190,6 @@ public class StarkShieldApp {
         v.plannedAcceleration = state.get(offSet + VarTable.plannedAcceleration.ordinal());
         v.plannedSteering = state.get(offSet + VarTable.plannedSteering.ordinal());
         v.role = state.get(offSet + VarTable.role.ordinal()) == 0.0 ? "EGO" : "NPC";
-        v.starked = true;
         v.targetSpeed = state.get(offSet + VarTable.targetSpeed.ordinal());
         if(v.role.equals("EGO")){
             return new ProtectedControlledVehicle(v);

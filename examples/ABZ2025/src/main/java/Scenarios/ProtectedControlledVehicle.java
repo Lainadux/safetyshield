@@ -46,7 +46,7 @@ public class ProtectedControlledVehicle extends ControlledVehicle {
 //        v.targetSpeed = state.get(offSet + VarTable.targetSpeed.ordinal());
         this.id = original.id;
         this.politeness = original.politeness;
-        this.starked = original.starked;
+        //this.starked = original.starked;
 
         this.setTargetLaneIndex(original.getTargetLaneIndex());
         this.setLaneIndex(original.getLaneIndex());

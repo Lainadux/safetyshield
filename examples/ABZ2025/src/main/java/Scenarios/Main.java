@@ -97,8 +97,8 @@ public class Main {
 
             boolean isSafe = true;
 
-           // while (realWorld.stepCount % realWorld.STEPS_PER_SECOND < realWorld.STEPS_PER_SECOND - 1) {
-            while (realWorld.stepCount  <=  0) {
+            while (realWorld.stepCount % realWorld.STEPS_PER_SECOND < realWorld.STEPS_PER_SECOND - 1) {
+            //while (realWorld.stepCount  <=  0) {
                 //when the ego has taken an decision
                 if(realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0){
                     protectedControlledVehicle.fetchDesiredLaneAndTargetSpeed();

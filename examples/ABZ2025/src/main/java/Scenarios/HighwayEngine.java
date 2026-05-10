@@ -258,7 +258,91 @@ public class HighwayEngine {
 
     }
 
+    public void populateProtectedTraffic(int targetVehicles, int numLanes, double minX, double maxX) {
+        this.numLanes = numLanes;
+        Random rand = new Random();
+        int spawned = 0;
+        int attempts = 0;
+        int MAX_ATTEMPTS = targetVehicles * 20;
 
+
+        final double LANE_WIDTH = 4.0;
+        final double SAFE_SPAWN_DISTANCE = 15.0;
+
+
+
+        while (spawned < targetVehicles && attempts < MAX_ATTEMPTS) {
+            attempts++;
+
+
+            int lane = rand.nextInt(numLanes);
+            double yCenter = lane * LANE_WIDTH;
+
+
+            double x = minX + (maxX - minX) * rand.nextDouble();
+
+            boolean collision = false;
+            for (Vehicle existing : this.vehicles) {
+//                if (existing.lane_index == lane) {
+                if(existing.getLaneIndex() == lane) {
+                    if (Math.abs(existing.x - x) < SAFE_SPAWN_DISTANCE) {
+                        collision = true;
+                        break;
+                    }
+                }
+            }
+
+
+            if (collision) continue;
+
+            Vehicle v;
+            if (hasEgo && spawned == 0) {
+                v = new ProtectedControlledVehicle();
+                v.role = "EGO";
+
+            }
+            else {
+                v = new Vehicle();
+                v.role = "NPC";
+            }
+
+
+            v.x = x;
+            v.y = yCenter;
+            // v.lane_index = lane;
+            //v.target_lane_index = lane;
+            v.setLaneIndex(lane);
+            v.setTargetLaneIndex(lane);
+
+            v.id = ""+spawned;
+            v.cooldownTimer = rand.nextDouble() * 1;
+
+            double speed = 20.0 + rand.nextGaussian() * 3.0;
+
+
+            v.speed = Math.max(10.0, Math.min(30.0, speed));
+            if(egoCentered && v.role.equals("EGO")){
+                lane = numLanes/2;
+                v.y = lane * LANE_WIDTH;
+                v.setLaneIndex(lane);
+                v.setTargetLaneIndex(lane);
+                v.speed = 25;
+            }
+
+
+            v.targetSpeed = v.speed + rand.nextDouble() * 5.0;
+
+            this.addVehicle(v);
+            v.injectEngine(this);
+
+
+
+
+            spawned++;
+        }
+
+
+    }
 
     public void render() {
 
@@ -434,9 +518,7 @@ public class HighwayEngine {
         if(this.vehicles == null || this.vehicles.isEmpty()) {
             throw new IllegalStateException("Engine must have vehicles to create StarkShieldApp");
         }
-        for(Vehicle v : this.vehicles){
-            v.starked = true;
-        }
+
         return new StarkShieldApp(this, this.vehicles);
     }
 
