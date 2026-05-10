@@ -20,23 +20,11 @@
  * limitations under the License.
  */
 
-package Scenarios;
+package Scenarios.Engine;
 
-public enum VarTable {
-    id,
-    politeness,
-    cooldownTimer,
-    target_lane_index,
-    lane_index,
-    x,
-    y,
-    vx,
-    vy,
-    speed,
-    heading,
-    plannedAcceleration,
-    plannedSteering,
-    targetSpeed,
+public class AIVehicle extends Vehicle {
+    public String role = "ego";
 
-    role //0forEGO, 1forNPC
+
+
 }

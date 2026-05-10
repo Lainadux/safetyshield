@@ -20,16 +20,23 @@
  * limitations under the License.
  */
 
-package Scenarios;
+package Scenarios.Engine;
 
 import java.util.List;
 
 public class ControlledVehicle extends Vehicle {
-    boolean simulated = false;
+    public boolean simulated = false;
 
     public ControlledVehicle() {
         super();
         this.role = "EGO";
+    }
+    public ControlledVehicle(Vehicle vehicle) {
+        super(vehicle);
+        this.role = "EGO";
+
+        //copy all attributes
+
     }
     public ControlledVehicle(double x, double y, int lane_index, double speed, double targetSpeed) {
 
@@ -58,7 +65,7 @@ public class ControlledVehicle extends Vehicle {
                 //do nothing, the decision is from the real ControlledVehicle, which performed fetchDesiredLaneAndTargetSpeed()
             }
             else{
-                //protection logic： deceleration
+                //protection logic锛?deceleration
                 this.target_lane_index = this.getTargetLaneIndex();
                 this.targetSpeed = this.targetSpeed -5 < 0 ? 0 : this.targetSpeed -5;
 
@@ -105,14 +112,14 @@ public class ControlledVehicle extends Vehicle {
         else{
             double rand = Math.random();
             if(rand < 0){
-                //不变速
+                //涓嶅彉閫?
             }
 //            else if(rand < 0.85){
-//                //加速
+//                //鍔犻€?
 //                this.targetSpeed += 5;
 //            }
             else{
-                //减速
+                //鍑忛€?
                 this.targetSpeed = this.targetSpeed <= 5 ? 0 : this.targetSpeed - 5;
 
             }

@@ -20,7 +20,7 @@
  * limitations under the License.
  */
 
-package Scenarios;
+package Scenarios.Engine;
 
 import com.google.gson.*;
 import java.lang.reflect.Type;
@@ -30,14 +30,14 @@ import java.lang.reflect.Type;
 
 public class VehicleAdapter implements JsonDeserializer<Vehicle>, JsonSerializer<Vehicle> {
 
-    // 🌟 核心破局点：创建一个没有任何自定义适配器的“纯净版 Gson”
+    // 馃専 鏍稿績鐮村眬鐐癸細鍒涘缓涓€涓病鏈変换浣曡嚜瀹氫箟閫傞厤鍣ㄧ殑鈥滅函鍑€鐗?Gson鈥?
     private static final Gson pureGson = new Gson();
 
     @Override
     public JsonElement serialize(Vehicle src, Type typeOfSrc, JsonSerializationContext context) {
-        // 使用 pureGson 序列化，防止无限递归
+        // 浣跨敤 pureGson 搴忓垪鍖栵紝闃叉鏃犻檺閫掑綊
         JsonObject result = pureGson.toJsonTree(src).getAsJsonObject();
-        // 打上类型思想钢印
+        // 鎵撲笂绫诲瀷鎬濇兂閽㈠嵃
         result.addProperty("vehicle_type", src.getClass().getSimpleName());
         return result;
     }
@@ -50,14 +50,14 @@ public class VehicleAdapter implements JsonDeserializer<Vehicle>, JsonSerializer
         if (typeElement != null) {
             String type = typeElement.getAsString();
 
-            // 🌟 使用 pureGson 反序列化具体子类，它会自动将 JSON 填入 ControlledVehicle 的字段中
+            // 馃専 浣跨敤 pureGson 鍙嶅簭鍒楀寲鍏蜂綋瀛愮被锛屽畠浼氳嚜鍔ㄥ皢 JSON 濉叆 ControlledVehicle 鐨勫瓧娈典腑
             if ("ControlledVehicle".equals(type)) {
                 return pureGson.fromJson(json, ControlledVehicle.class);
             }
-            // 如果未来有 IDMVehicle, 可以在这里加 else if ("IDMVehicle".equals(type)) ...
+            // 濡傛灉鏈潵鏈?IDMVehicle, 鍙互鍦ㄨ繖閲屽姞 else if ("IDMVehicle".equals(type)) ...
         }
 
-        // 🌟 默认情况：使用 pureGson 反序列化为基类
+        // 馃専 榛樿鎯呭喌锛氫娇鐢?pureGson 鍙嶅簭鍒楀寲涓哄熀绫?
         return pureGson.fromJson(json, Vehicle.class);
     }
 }

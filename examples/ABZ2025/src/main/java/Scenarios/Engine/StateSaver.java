@@ -20,7 +20,7 @@
  * limitations under the License.
  */
 
-package Scenarios;
+package Scenarios.Engine;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -31,34 +31,34 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class StateSaver {
-    // 开启 PrettyPrinting 可以让导出的 JSON 文件有换行和缩进，方便人类阅读
+    // 寮€鍚?PrettyPrinting 鍙互璁╁鍑虹殑 JSON 鏂囦欢鏈夋崲琛屽拰缂╄繘锛屾柟渚夸汉绫婚槄璇?
     private static final Gson gson = new GsonBuilder()
-            .registerTypeAdapter(Vehicle.class, new VehicleAdapter()) // 注册适配器
+            .registerTypeAdapter(Vehicle.class, new VehicleAdapter()) // 娉ㄥ唽閫傞厤鍣?
             .setPrettyPrinting()
             .create();
 
     /**
-     * 将车辆状态保存到文件
+     * 灏嗚溅杈嗙姸鎬佷繚瀛樺埌鏂囦欢
      */
     public static void saveState(List<Vehicle> vehicles, String filePath) {
         try (FileWriter writer = new FileWriter(filePath)) {
             gson.toJson(vehicles, writer);
-            System.out.println("💾 场景已保存至: " + filePath);
+            System.out.println("馃捑 鍦烘櫙宸蹭繚瀛樿嚦: " + filePath);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     /**
-     * 从文件读取车辆状态
+     * 浠庢枃浠惰鍙栬溅杈嗙姸鎬?
      */
     public static List<Vehicle> loadState(String filePath) {
         try (FileReader reader = new FileReader(filePath)) {
-            // 🌟 关键：告诉 GSON 这是一组 Vehicle 组成的 List
+            // 馃専 鍏抽敭锛氬憡璇?GSON 杩欐槸涓€缁?Vehicle 缁勬垚鐨?List
             Type listType = new TypeToken<ArrayList<Vehicle>>(){}.getType();
             return gson.fromJson(reader, listType);
         } catch (IOException e) {
-            System.err.println("❌ 读取场景失败: " + e.getMessage());
+            System.err.println("鉂?璇诲彇鍦烘櫙澶辫触: " + e.getMessage());
             return new ArrayList<>();
         }
     }

@@ -20,7 +20,7 @@
  * limitations under the License.
  */
 
-package Scenarios;
+package Scenarios.Engine;
 
 public class ProtectedControlledVehicle extends ControlledVehicle {
 

@@ -20,7 +20,7 @@
  * limitations under the License.
  */
 
-package Scenarios;
+package Scenarios.Engine;
 
 import com.google.gson.annotations.SerializedName;
 
@@ -50,7 +50,8 @@ public class Vehicle {
             return (ControlledVehicle) this;
         }
         else{
-            return new ControlledVehicle(this.x, this.y, this.getLaneIndex(), this.speed, this.targetSpeed);
+           // return new ControlledVehicle(this.x, this.y, this.getLaneIndex(), this.speed, this.targetSpeed);
+            return new ControlledVehicle(this);
         }
     }
     public double cooldownTimer = 0.0;
@@ -88,7 +89,31 @@ public class Vehicle {
     public final double LENGTH = 5.0;
     public final double WHEELBASE = 5.0;
     public final double WIDTH = 2.0;
+    public Vehicle(){
 
+    }
+
+    /**
+     * @param copy
+     * return a copy of the vehicle, with an null engine
+     */
+
+    public Vehicle(Vehicle copy){
+        this.id = copy.id;
+        this.politeness = copy.politeness;
+        this.cooldownTimer = copy.cooldownTimer;
+        this.setTargetLaneIndex(copy.getTargetLaneIndex());
+        this.setLaneIndex(copy.getLaneIndex());
+        this.x = copy.x;
+        this.y = copy.y;
+        this.vx = copy.vx;
+        this.vy = copy.vy;
+        this.speed = copy.speed;
+        this.heading = copy.heading;
+        this.plannedAcceleration = copy.plannedAcceleration;
+        this.plannedSteering = copy.plannedSteering;
+        this.targetSpeed = copy.targetSpeed;
+    }
     public Vehicle deepCopySelf() {
         Vehicle copy = new Vehicle();
         copy.id = this.id;
@@ -163,20 +188,20 @@ public class Vehicle {
 
             if (other == this) continue;
 
-            // 算自己和别人的绝对距离
+            // 绠楄嚜宸卞拰鍒汉鐨勭粷瀵硅窛绂?
             double dx = Math.abs(this.x - other.x);
             double dy = Math.abs(this.y - other.y);
 
-            // 假设车辆有 LENGTH 和 WIDTH 属性 (宽度设为 2.0)
+            // 鍋囪杞﹁締鏈?LENGTH 鍜?WIDTH 灞炴€?(瀹藉害璁句负 2.0)
             boolean overlapX = dx < (this.LENGTH / 2.0 + other.LENGTH / 2.0);
             boolean overlapY = dy < (this.WIDTH / 2.0 + other.WIDTH / 2.0);
 
             if (overlapX && overlapY) {
 
-                // 抛出带有明确责任方的异常
+                // 鎶涘嚭甯︽湁鏄庣‘璐ｄ换鏂圭殑寮傚父
                 String crashMsg = String.format(
-                        "💥 致命碰撞！\n肇事车辆：[%s-%s] 在移动后一头撞上了 [%s-%s]！\n" +
-                                "肇事车坐标 X:%.1f Y:%.1f | 被撞车坐标 X:%.1f Y:%.1f",
+                        "馃挜 鑷村懡纰版挒锛乗n鑲囦簨杞﹁締锛歔%s-%s] 鍦ㄧЩ鍔ㄥ悗涓€澶存挒涓婁簡 [%s-%s]锛乗n" +
+                                "鑲囦簨杞﹀潗鏍?X:%.1f Y:%.1f | 琚挒杞﹀潗鏍?X:%.1f Y:%.1f",
                         this.role, this.id,
                         other.role, other.id,
                         this.x, this.y, other.x, other.y
@@ -193,17 +218,146 @@ public class Vehicle {
 
         return other.x - this.x;
     }
-    //重写print
+    //閲嶅啓print
 
     public String toString() {
-//        /输出除了debug外的所有属性， 包括stark
+//        /杈撳嚭闄や簡debug澶栫殑鎵€鏈夊睘鎬э紝 鍖呮嫭stark
         return String.format("Vehicle{id='%s', role='%s', x=%.1f, y=%.1f, lane_index=%d, target_lane_index=%d, speed=%.1f, plannedAcceleration=%.1f, plannedSteering=%.1f, " +
                         ", targetSpeed=%.1f, cooldownTimer=%.1f, politeness=%.2f, timestamp=%.2f}",
                 id, role, x, y, getLaneIndex(), getTargetLaneIndex(), speed, plannedAcceleration, plannedSteering, targetSpeed, cooldownTimer, politeness, engine != null ? engine.stepCount * engine.dt : 0.0
         );
     }
+    public boolean isEgo(){
+        return this.role.equals("EGO");
+    }
 
 
+    public String getId() {
+        return id;
+    }
 
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public double getPoliteness() {
+        return politeness;
+    }
+
+    public void setPoliteness(double politeness) {
+        this.politeness = politeness;
+    }
+
+    public double getCooldownTimer() {
+        return cooldownTimer;
+    }
+
+    public void setCooldownTimer(double cooldownTimer) {
+        this.cooldownTimer = cooldownTimer;
+    }
+
+    public int getTarget_lane_index() {
+        return target_lane_index;
+    }
+
+    public void setTarget_lane_index(int target_lane_index) {
+        this.target_lane_index = target_lane_index;
+    }
+
+    public int getLane_index() {
+        return lane_index;
+    }
+
+    public void setLane_index(int lane_index) {
+        this.lane_index = lane_index;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+
+    public double getX() {
+        return x;
+    }
+
+    public void setX(double x) {
+        this.x = x;
+    }
+
+    public double getY() {
+        return y;
+    }
+
+    public void setY(double y) {
+        this.y = y;
+    }
+
+    public double getVx() {
+        return vx;
+    }
+
+    public void setVx(double vx) {
+        this.vx = vx;
+    }
+
+    public double getVy() {
+        return vy;
+    }
+
+    public void setVy(double vy) {
+        this.vy = vy;
+    }
+
+    public double getSpeed() {
+        return speed;
+    }
+
+    public void setSpeed(double speed) {
+        this.speed = speed;
+    }
+
+    public double getHeading() {
+        return heading;
+    }
+
+    public void setHeading(double heading) {
+        this.heading = heading;
+    }
+
+    public double getPlannedAcceleration() {
+        return plannedAcceleration;
+    }
+
+    public void setPlannedAcceleration(double plannedAcceleration) {
+        this.plannedAcceleration = plannedAcceleration;
+    }
+
+    public double getPlannedSteering() {
+        return plannedSteering;
+    }
+
+    public void setPlannedSteering(double plannedSteering) {
+        this.plannedSteering = plannedSteering;
+    }
+
+    public double getLENGTH() {
+        return LENGTH;
+    }
+
+    public double getWHEELBASE() {
+        return WHEELBASE;
+    }
+
+    public double getWIDTH() {
+        return WIDTH;
+    }
+
+    public double getTargetSpeed() {
+        return targetSpeed;
+    }
+
+    public void setTargetSpeed(double targetSpeed) {
+        this.targetSpeed = targetSpeed;
+    }
 }
 

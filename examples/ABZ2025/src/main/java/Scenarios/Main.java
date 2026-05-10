@@ -22,6 +22,7 @@
 
 package Scenarios;
 
+import Scenarios.Engine.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -97,21 +98,24 @@ public class Main {
 
             boolean isSafe = true;
 
-            while (realWorld.stepCount % realWorld.STEPS_PER_SECOND < realWorld.STEPS_PER_SECOND - 1) {
+            while (realWorld.stepCount != 10 * realWorld.STEPS_PER_SECOND - 1) {
+
             //while (realWorld.stepCount  <=  0) {
                 //when the ego has taken an decision
                 if(realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0){
                     protectedControlledVehicle.fetchDesiredLaneAndTargetSpeed();
-                    System.out.println("real world scenario");
-                    for(Vehicle v: realWorld.vehicles){
-                        System.out.println(v);
-                    }
+//                    System.out.println("real world scenario");
+//                    for(Vehicle v: realWorld.vehicles){
+//                        System.out.println(v);
+//                    }
                 }
                //testing simulation
                 if(realWorld.stepCount == 0){
                     //egoVehicle.fetchDesiredLaneAndTargetSpeed();
-
-                    System.out.println("Step: " + realWorld.stepCount + ", Time: " + realWorld.runTime);
+                    System.out.println("real world scenario：");
+                    for(Vehicle v: realWorld.vehicles){
+                        System.out.println(v);
+                    }
                     List<Vehicle> vehicles = new ArrayList<>();
                     for(Vehicle v: realWorld.vehicles){
                         if(v instanceof ControlledVehicle){
@@ -125,7 +129,7 @@ public class Main {
                         }
                     }
                     HighwayEngine engine = new HighwayEngine(dt, true, true, vehicles);
-                    StarkShieldApp starkShieldApp = engine.createStarkShieldApp();
+                    StarkShieldApp starkShieldApp = engine.createStarkShieldApp(10);
                 }
 
 

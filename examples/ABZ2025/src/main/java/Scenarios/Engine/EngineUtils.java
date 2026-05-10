@@ -20,7 +20,7 @@
  * limitations under the License.
  */
 
-package Scenarios;
+package Scenarios.Engine;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.geom.AffineTransform;

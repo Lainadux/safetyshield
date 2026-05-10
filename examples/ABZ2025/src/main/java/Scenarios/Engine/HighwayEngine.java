@@ -1,5 +1,4 @@
-package Scenarios;
-import Scenarios.Vehicle;
+package Scenarios.Engine;
 
 import javax.swing.*;
 import java.awt.*;
@@ -9,12 +8,12 @@ import java.util.List;
 import java.util.Random;
 
 public class HighwayEngine {
-    boolean egoCentered = false;
-    boolean saveInitStateAnyWay = false;
-    boolean requireRender = true;
-    boolean requireCollisionLog = false;
+    public boolean egoCentered = false;
+    public boolean saveInitStateAnyWay = false;
+    public boolean requireRender = true;
+    public boolean requireCollisionLog = false;
     public List<Vehicle> initialVehiclesStates = new ArrayList<>();
-    boolean enhancedCollisionCheckEnabled =false;
+    public boolean enhancedCollisionCheckEnabled =false;
     public List<Vehicle> vehicles = new ArrayList<>();
     public double dt;
     public boolean hasEgo = false;
@@ -112,7 +111,7 @@ public class HighwayEngine {
         }
 
 
-        // 调试打印：只看 Ego 车
+        // 璋冭瘯鎵撳嵃锛氬彧鐪?Ego 杞?
         Vehicle ego = vehicles.get(0);
         this.runTime += this.dt;
         stepCount++;
@@ -154,7 +153,7 @@ public class HighwayEngine {
         }
 
 
-        // 调试打印：只看 Ego 车
+        // 璋冭瘯鎵撳嵃锛氬彧鐪?Ego 杞?
         Vehicle ego = vehicles.get(0);
         this.runTime += this.dt;
         stepCount++;
@@ -391,7 +390,7 @@ public class HighwayEngine {
 
 
         double cameraX = vehicles.isEmpty() ? 0 : vehicles.get(0).x;
-        int offsetX = (int) (screenWidth / 2 - cameraX * SCALE); // 把车放在屏幕左侧 1/3 处
+        int offsetX = (int) (screenWidth / 2 - cameraX * SCALE); // 鎶婅溅鏀惧湪灞忓箷宸︿晶 1/3 澶?
 
         g2d.setColor(Color.WHITE);
 
@@ -479,27 +478,26 @@ public class HighwayEngine {
         }
     }
    public void checkCollisions() {
-        // 双重循环遍历所有车辆的组合 (只测 i 和 j，不重复测试)
+
         for (int i = 0; i < vehicles.size(); i++) {
             for (int j = i + 1; j < vehicles.size(); j++) {
                 Vehicle v1 = vehicles.get(i);
                 Vehicle v2 = vehicles.get(j);
 
-                // 1. 计算两车中心的绝对距离
+
                 double dx = Math.abs(v1.x - v2.x);
                 double dy = Math.abs(v1.y - v2.y);
 
-                // 2. 假设你的车有 LENGTH 和 WIDTH 属性 (如果没有，写死 5.0 和 2.0)
-                // 碰撞判定：X重叠 并且 Y重叠
+
                 boolean overlapX = dx < (v1.LENGTH / 2.0 + v2.LENGTH / 2.0);
-                boolean overlapY = dy < (2.0 / 2.0 + 2.0 / 2.0); // 假设 WIDTH 是 2.0
+                boolean overlapY = dy < (2.0 / 2.0 + 2.0 / 2.0); // 鍋囪 WIDTH 鏄?2.0
 
                 if (overlapX && overlapY) {
-                    // 3. 触发致命碰撞！抛出带 ID 的运行时异常
+
                     String crashMsg = String.format(
-                            "💥 致命物理碰撞检测触发！\n" +
-                                    "肇事车辆：[%s-%s] 与 [%s-%s] 发生了重叠！\n" +
-                                    "接触点坐标 -> V1 X:%.1f Y:%.1f | V2 X:%.1f Y:%.1f",
+                            "馃挜 鑷村懡鐗╃悊纰版挒妫€娴嬭Е鍙戯紒\n" +
+                                    "鑲囦簨杞﹁締锛歔%s-%s] 涓?[%s-%s] 鍙戠敓浜嗛噸鍙狅紒\n" +
+                                    "鎺ヨЕ鐐瑰潗鏍?-> V1 X:%.1f Y:%.1f | V2 X:%.1f Y:%.1f",
                             v1.getRole(), v1.id,
                             v2.getRole(), v2.id,
                             v1.x, v1.y, v2.x, v2.y
@@ -514,12 +512,12 @@ public class HighwayEngine {
         }
     }
 
-    public StarkShieldApp createStarkShieldApp() {
+    public StarkShieldApp createStarkShieldApp(int futureSeconds) {
         if(this.vehicles == null || this.vehicles.isEmpty()) {
             throw new IllegalStateException("Engine must have vehicles to create StarkShieldApp");
         }
 
-        return new StarkShieldApp(this, this.vehicles);
+        return new StarkShieldApp(this, this.vehicles, futureSeconds);
     }
 
 

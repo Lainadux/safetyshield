@@ -20,7 +20,7 @@
  * limitations under the License.
  */
 
-package Scenarios;
+package Scenarios.Engine;
 
 import it.unicam.quasylab.jspear.*;
 import it.unicam.quasylab.jspear.controller.Controller;
@@ -39,6 +39,8 @@ public class StarkShieldApp {
     public int predictFutureSeconds = 1;
 
     private static final int EVOLUTION_SEQUENCE_SIZE = 1;
+    public int stepCount = 0;
+
     public double dt = 0;
     private HighwayEngine engine;
     private List<Vehicle> vehicles;
@@ -47,10 +49,11 @@ public class StarkShieldApp {
     private ControlledSystem system;
     private EvolutionSequence sequence;
 
-    public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles) {
+    public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds) {
         this.engine = engine;
         this.dt = engine.dt;
         this.STEPS_PER_SECOND = engine.STEPS_PER_SECOND;
+        this.predictFutureSeconds = predictFutureSeconds;
 
         this.vehicles = vehicles;
         initialState = this.getInitialState(vehicles);
@@ -66,9 +69,6 @@ public class StarkShieldApp {
             System.out.println("Summary of the evolution sequence:");
             DataState ds = ss.getDataState();
             for (int i = 0; i < vehicles.size(); i++) {
-                if(i == vehicles.size()-1){
-                    System.out.println();
-                }
                 Vehicle v = stateToVehicle(ds, i);
                 System.out.println(v);
             }
@@ -106,6 +106,7 @@ public class StarkShieldApp {
             }
         }
 
+
         return new DataState(vehicles.size() * VarTable.values().length, i -> values.getOrDefault(i, Double.NaN));
     }
 
@@ -126,6 +127,7 @@ public class StarkShieldApp {
         for (int i = 0; i < numsVehicles; i++) {
             Vehicle v = stateToVehicle(state, i);
             localVehicles.add(v);
+
         }
 
 
@@ -133,28 +135,36 @@ public class StarkShieldApp {
         sandboxEngine.dt = this.dt;
         sandboxEngine.STEPS_PER_SECOND = this.STEPS_PER_SECOND;
         sandboxEngine.vehicles = localVehicles;
+        if(this.stepCount == 100){
+            System.out.println();
+        }
+        sandboxEngine.stepCount = this.stepCount;
+        if(this.stepCount % this.STEPS_PER_SECOND == 0 && this.stepCount > 0) {
+            for (Vehicle v : localVehicles) {
+                if(v.role.equals("EGO")){
+                   v.targetSpeed =  v.targetSpeed-5 >=0? v.targetSpeed-5 : 0;
+                }
+                v.injectEngine(sandboxEngine);
+            }
+        }
+        else{
+            for (Vehicle v : localVehicles) {
+                v.injectEngine(sandboxEngine);
+            }
+        }
 
-        for (Vehicle v : localVehicles) {
-            v.injectEngine(sandboxEngine);
-        }
-        System.out.println("stark sandbox engine initialized with state from real world:");
-        for (Vehicle v : localVehicles) {
-            System.out.println(v);
-        }
+
+
         try {
             sandboxEngine.step();
         } catch (Exception e) {
             e.printStackTrace();
         }
-        System.out.println("stark sandbox engine after step:");
         for (int i = 0; i < numsVehicles; i++) {
             Vehicle v = localVehicles.get(i);
             int offSet = i * VarTable.values().length;
 
-            System.out.println(v);
-            if(v.role.equals("EGO")){
-                System.out.println();
-            }
+
             updates.add(new DataStateUpdate(offSet + VarTable.politeness.ordinal(), v.politeness));
             updates.add(new DataStateUpdate(offSet + VarTable.cooldownTimer.ordinal(), v.cooldownTimer));
             updates.add(new DataStateUpdate(offSet + VarTable.target_lane_index.ordinal(), v.getTargetLaneIndex()));
@@ -169,7 +179,7 @@ public class StarkShieldApp {
             updates.add(new DataStateUpdate(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering));
             updates.add(new DataStateUpdate(offSet + VarTable.targetSpeed.ordinal(), v.targetSpeed));
         }
-
+        this.stepCount += 1;
         return updates;
     }
 
