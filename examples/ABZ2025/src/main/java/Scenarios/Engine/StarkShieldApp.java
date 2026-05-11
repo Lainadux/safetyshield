@@ -38,8 +38,8 @@ import java.util.Map;
 public class StarkShieldApp {
     public int predictFutureSeconds = 1;
 
-    private static final int EVOLUTION_SEQUENCE_SIZE = 1;
-    public int stepCount = 0;
+    private static final int EVOLUTION_SEQUENCE_SIZE = 10;
+    //public int stepCount = 0;
 
     public double dt = 0;
     private HighwayEngine engine;
@@ -65,7 +65,7 @@ public class StarkShieldApp {
     private void printSummary() {
         SampleSet<SystemState> dss = sequence.get(this.predictFutureSeconds * STEPS_PER_SECOND - 1);
        // SampleSet<SystemState> dss = sequence.get(1);
-        dss.stream().limit(1).forEach(ss -> {
+        dss.stream().limit(5).forEach(ss -> {
             System.out.println("Summary of the evolution sequence:");
             DataState ds = ss.getDataState();
             for (int i = 0; i < vehicles.size(); i++) {
@@ -135,11 +135,12 @@ public class StarkShieldApp {
         sandboxEngine.dt = this.dt;
         sandboxEngine.STEPS_PER_SECOND = this.STEPS_PER_SECOND;
         sandboxEngine.vehicles = localVehicles;
-        if(this.stepCount == 100){
-            System.out.println();
-        }
-        sandboxEngine.stepCount = this.stepCount;
-        if(this.stepCount % this.STEPS_PER_SECOND == 0 && this.stepCount > 0) {
+
+        //sandboxEngine.stepCount = this.stepCount;
+        //if(this.stepCount % this.STEPS_PER_SECOND == 0 && this.stepCount > 0) {
+        int currentStep = state.getStep();
+        sandboxEngine.stepCount = currentStep;
+        if (currentStep % this.STEPS_PER_SECOND == 0 && currentStep > 0){
             for (Vehicle v : localVehicles) {
                 if(v.role.equals("EGO")){
                    v.targetSpeed =  v.targetSpeed-5 >=0? v.targetSpeed-5 : 0;
@@ -179,7 +180,9 @@ public class StarkShieldApp {
             updates.add(new DataStateUpdate(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering));
             updates.add(new DataStateUpdate(offSet + VarTable.targetSpeed.ordinal(), v.targetSpeed));
         }
-        this.stepCount += 1;
+        //this.stepCount += 1;
+
+
         return updates;
     }
 
