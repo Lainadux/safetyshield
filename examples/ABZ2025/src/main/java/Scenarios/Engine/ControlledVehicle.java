@@ -99,7 +99,7 @@ public class ControlledVehicle extends Vehicle {
     }
     public void randomActionGenerator(){
 
-        boolean changeLane = Math.random() < 0;
+        boolean changeLane = Math.random() < 0.3;
         if(changeLane){
             int[] lanes = this.getEngine().computePossibleLanes(this);
 
@@ -111,13 +111,13 @@ public class ControlledVehicle extends Vehicle {
         }
         else{
             double rand = Math.random();
-            if(rand < 0){
+            if(rand < 0.6){
                 //涓嶅彉閫?
             }
-//            else if(rand < 0.85){
-//                //鍔犻€?
-//                this.targetSpeed += 5;
-//            }
+            else if(rand < 0.9){
+                //鍔犻€?
+                this.targetSpeed += 5;
+            }
             else{
                 //鍑忛€?
                 this.targetSpeed = this.targetSpeed <= 5 ? 0 : this.targetSpeed - 5;

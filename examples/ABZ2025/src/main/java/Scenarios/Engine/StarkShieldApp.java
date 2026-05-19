@@ -27,7 +27,14 @@ import it.unicam.quasylab.jspear.controller.Controller;
 import it.unicam.quasylab.jspear.controller.ControllerRegistry;
 import it.unicam.quasylab.jspear.controller.ExecController;
 import it.unicam.quasylab.jspear.ds.DataState;
+import it.unicam.quasylab.jspear.ds.DataStateExpression;
+import it.unicam.quasylab.jspear.ds.DataStateFunction;
 import it.unicam.quasylab.jspear.ds.DataStateUpdate;
+import it.unicam.quasylab.jspear.distl.AlwaysDisTLFormula;
+import it.unicam.quasylab.jspear.distl.ConjunctionDisTLFormula;
+import it.unicam.quasylab.jspear.distl.DisTLFormula;
+import it.unicam.quasylab.jspear.distl.DoubleSemanticsVisitor;
+import it.unicam.quasylab.jspear.distl.TargetDisTLFormula;
 import org.apache.commons.math3.random.RandomGenerator;
 
 import java.util.HashMap;
@@ -38,6 +45,12 @@ import java.util.Map;
 public class StarkShieldApp {
     public int predictFutureSeconds = 1;
     public static final int auxilaryVarNums = 4;
+    private static final double CRASH_DISTANCE_THRESHOLD = 0.0;
+    private static final double STABILITY_DISTANCE_THRESHOLD = 0.1;
+    private static final double MIN_ACCEPTABLE_ROBUSTNESS = 0.0;
+    private static final double VEHICLE_LENGTH = 5.0;
+    private static final double MIN_STABLE_FRONT_GAP = 15.0;
+    private static final double MAX_STABLE_RELATIVE_SPEED = 2.0;
     private static final int EVOLUTION_SEQUENCE_SIZE = 10;
     //public int stepCount = 0;
     private List<Vehicle> finalVehicles;
@@ -84,7 +97,148 @@ public class StarkShieldApp {
 
     }
 
-    //private boolean verifySafe(){}
+    public boolean verifySafe(){
+        int lastStep = this.predictFutureSeconds * STEPS_PER_SECOND - 1;
+        DisTLFormula noCollision = new AlwaysDisTLFormula(
+                new TargetDisTLFormula(this::resetCrashState, this::crashPenalty, CRASH_DISTANCE_THRESHOLD),
+                0,
+                lastStep
+        );
+        DisTLFormula stableAtLastStep = new AlwaysDisTLFormula(
+                new TargetDisTLFormula(this::stabilizeEgoAgainstFrontVehicle, this::frontVehicleStabilityPenalty, STABILITY_DISTANCE_THRESHOLD),
+                lastStep,
+                lastStep
+        );
+        DisTLFormula shieldCondition = new ConjunctionDisTLFormula(noCollision, stableAtLastStep);
+        double robustness = new DoubleSemanticsVisitor().eval(shieldCondition).eval(EVOLUTION_SEQUENCE_SIZE, 0, sequence);
+        return robustness >= MIN_ACCEPTABLE_ROBUSTNESS;
+    }
+
+    private DataState resetCrashState(RandomGenerator rg, DataState state) {
+        return state.apply(List.of(new DataStateUpdate(crashedIndex(), 0.0)));
+    }
+
+    private DataState stabilizeEgoAgainstFrontVehicle(RandomGenerator rg, DataState state) {
+        int egoIndex = getEgoVehicleIndex(state);
+        if (egoIndex < 0) {
+            return state;
+        }
+
+        int frontIndex = getNearestFrontVehicleIndexAcrossAdjacentLanes(state, egoIndex);
+        if (frontIndex < 0) {
+            return state;
+        }
+        int egoOffset = vehicleOffset(egoIndex);
+        int frontOffset = vehicleOffset(frontIndex);
+        double frontX = state.get(frontOffset + VarTable.x.ordinal());
+        double frontVx = state.get(frontOffset + VarTable.vx.ordinal());
+        double frontSpeed = state.get(frontOffset + VarTable.speed.ordinal());
+        return state.apply(List.of(
+                new DataStateUpdate(egoOffset + VarTable.x.ordinal(), frontX - VEHICLE_LENGTH - MIN_STABLE_FRONT_GAP),
+                new DataStateUpdate(egoOffset + VarTable.vx.ordinal(), frontVx),
+                new DataStateUpdate(egoOffset + VarTable.speed.ordinal(), frontSpeed),
+                new DataStateUpdate(egoOffset + VarTable.targetSpeed.ordinal(), frontSpeed)
+        ));
+    }
+
+    private double crashPenalty(DataState state) {
+        return state.get(crashedIndex()) > 0.0 ? 1.0 : 0.0;
+    }
+
+    private double frontVehicleStabilityPenalty(DataState state) {
+        int egoIndex = getEgoVehicleIndex(state);
+        if (egoIndex < 0) {
+            return 0.0;
+        }
+
+        double totalPenalty = 0.0;
+        int egoLane = (int) state.get(vehicleOffset(egoIndex) + VarTable.lane_index.ordinal());
+        for (int lane = egoLane - 1; lane <= egoLane + 1; lane++) {
+            int frontIndex = getFrontVehicleIndexInLane(state, egoIndex, lane);
+            if (frontIndex >= 0) {
+                totalPenalty += frontVehicleStabilityPenalty(state, egoIndex, frontIndex);
+            }
+        }
+        return totalPenalty;
+    }
+
+    private double frontVehicleStabilityPenalty(DataState state, int egoIndex, int frontIndex) {
+        int egoOffset = vehicleOffset(egoIndex);
+        int frontOffset = vehicleOffset(frontIndex);
+        double egoX = state.get(egoOffset + VarTable.x.ordinal());
+        double frontX = state.get(frontOffset + VarTable.x.ordinal());
+        double egoVx = state.get(egoOffset + VarTable.vx.ordinal());
+        double frontVx = state.get(frontOffset + VarTable.vx.ordinal());
+        double frontGap = frontX - egoX - VEHICLE_LENGTH;
+        double relativeSpeed = Math.abs(egoVx - frontVx);
+        double distanceViolation = Math.max(0.0, MIN_STABLE_FRONT_GAP - frontGap) / MIN_STABLE_FRONT_GAP;
+        double speedViolation = Math.max(0.0, relativeSpeed - MAX_STABLE_RELATIVE_SPEED) / MAX_STABLE_RELATIVE_SPEED;
+        return Math.min(1.0, distanceViolation + speedViolation);
+    }
+
+    private int getEgoVehicleIndex(DataState state) {
+        for (int i = 0; i < vehicles.size(); i++) {
+            if (state.get(vehicleOffset(i) + VarTable.role.ordinal()) == 0.0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int getNearestFrontVehicleIndexAcrossAdjacentLanes(DataState state, int egoIndex) {
+        if (egoIndex < 0) {
+            return -1;
+        }
+
+        int egoOffset = vehicleOffset(egoIndex);
+        int egoLane = (int) state.get(egoOffset + VarTable.lane_index.ordinal());
+        double egoX = state.get(egoOffset + VarTable.x.ordinal());
+        int nearestFrontIndex = -1;
+        double nearestFrontX = Double.POSITIVE_INFINITY;
+        for (int lane = egoLane - 1; lane <= egoLane + 1; lane++) {
+            int candidateIndex = getFrontVehicleIndexInLane(state, egoIndex, lane);
+            if (candidateIndex >= 0) {
+                double candidateX = state.get(vehicleOffset(candidateIndex) + VarTable.x.ordinal());
+                if (candidateX > egoX && candidateX < nearestFrontX) {
+                    nearestFrontIndex = candidateIndex;
+                    nearestFrontX = candidateX;
+                }
+            }
+        }
+        return nearestFrontIndex;
+    }
+
+    private int getFrontVehicleIndexInLane(DataState state, int egoIndex, int targetLane) {
+        if (egoIndex < 0) {
+            return -1;
+        }
+
+        int egoOffset = vehicleOffset(egoIndex);
+        double egoX = state.get(egoOffset + VarTable.x.ordinal());
+        int frontIndex = -1;
+        double closestFrontX = Double.POSITIVE_INFINITY;
+        for (int i = 0; i < vehicles.size(); i++) {
+            if (i == egoIndex) {
+                continue;
+            }
+            int offset = vehicleOffset(i);
+            int lane = (int) state.get(offset + VarTable.lane_index.ordinal());
+            double x = state.get(offset + VarTable.x.ordinal());
+            if (lane == targetLane && x > egoX && x < closestFrontX) {
+                frontIndex = i;
+                closestFrontX = x;
+            }
+        }
+        return frontIndex;
+    }
+
+    private int vehicleOffset(int vehicleIndex) {
+        return vehicleIndex * VarTable.values().length;
+    }
+
+    private int crashedIndex() {
+        return vehicles.size() * VarTable.values().length;
+    }
 
     private DataState getInitialState(List<Vehicle> vehicles) {
         System.out.println("initial state fetched by stark:");
