@@ -42,7 +42,7 @@ public class Main {
         if(usage == Usage.DEBUG){
             HighwayEngine highwayEngine = new HighwayEngine(0.02, true);
             HighwayEngine highwayEngine2 = new HighwayEngine(0.02, true);
-            highwayEngine.populateTraffic(6, 3, 0.0, 50.0);
+            highwayEngine.populateTraffic(6, 3, 0.0, 100.0);
             List<Vehicle> vehicles = highwayEngine.vehicles;
             ControlledVehicle egoVehicle = highwayEngine.getEgoVehicle();
             ProtectedControlledVehicle protectedControlledVehicle = new ProtectedControlledVehicle(egoVehicle);
@@ -92,7 +92,7 @@ public class Main {
             double dt = 0.02;
             HighwayEngine realWorld = new HighwayEngine(dt, true);
             realWorld.enhancedCollisionCheckEnabled = true;
-            realWorld.populateTraffic(8, 3, 0.0, 50.0);
+            realWorld.populateTraffic(6, 3, 0.0, 80.0);
             ControlledVehicle egoVehicle = realWorld.getEgoVehicle();
             ProtectedControlledVehicle protectedControlledVehicle = new ProtectedControlledVehicle(egoVehicle);
             realWorld.setEgoVehicle(protectedControlledVehicle);

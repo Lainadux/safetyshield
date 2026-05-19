@@ -37,9 +37,10 @@ import java.util.Map;
 
 public class StarkShieldApp {
     public int predictFutureSeconds = 1;
-
+    public static final int auxilaryVarNums = 4;
     private static final int EVOLUTION_SEQUENCE_SIZE = 10;
     //public int stepCount = 0;
+    private List<Vehicle> finalVehicles;
 
     public double dt = 0;
     private HighwayEngine engine;
@@ -48,6 +49,7 @@ public class StarkShieldApp {
     private DataState initialState;
     private ControlledSystem system;
     private EvolutionSequence sequence;
+    private SampleSet<SystemState> dss;
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds) {
         this.engine = engine;
@@ -63,7 +65,7 @@ public class StarkShieldApp {
     }
 
     private void printSummary() {
-        SampleSet<SystemState> dss = sequence.get(this.predictFutureSeconds * STEPS_PER_SECOND - 1);
+        dss = sequence.get(this.predictFutureSeconds * STEPS_PER_SECOND - 1);
        // SampleSet<SystemState> dss = sequence.get(1);
         dss.stream().limit(5).forEach(ss -> {
             System.out.println("Summary of the evolution sequence:");
@@ -73,8 +75,16 @@ public class StarkShieldApp {
                 System.out.println(v);
             }
             System.out.println("Crashed:"+ ds.get(vehicles.size() * VarTable.values().length));
+            System.out.println("Index of the car that is ahead of ego in the current lane:"+ ds.get(vehicles.size() * VarTable.values().length + 1));
+            System.out.println("Index of the car that is ahead of ego in the left lane:"+ ds.get(vehicles.size() * VarTable.values().length + 2));
+            System.out.println("Index of the car that is ahead of ego in the right lane:"+ ds.get(vehicles.size() * VarTable.values().length + 3));
+            System.out.println("final vehicles");
+
         });
+
     }
+
+    //private boolean verifySafe(){}
 
     private DataState getInitialState(List<Vehicle> vehicles) {
         System.out.println("initial state fetched by stark:");
@@ -109,6 +119,12 @@ public class StarkShieldApp {
         //the last vars:
         //1. crashed
         values.put(vehicles.size() * VarTable.values().length, 0.0);
+        //2. index of the car that is ahead of ego in the current lane
+        values.put(vehicles.size() * VarTable.values().length + 1, -1.0);
+        //3. index of the car that is ahead in the left lane
+        values.put(vehicles.size() * VarTable.values().length + 2, -1.0);
+        //4. index of the car that is ahead in the right lane
+        values.put(vehicles.size() * VarTable.values().length + 3, -1.0);
 
 
 //        return new DataState(vehicles.size() * VarTable.values().length + 1,
@@ -190,7 +206,32 @@ public class StarkShieldApp {
                 updates.add(new DataStateUpdate(vehicles.size() * VarTable.values().length, 1.0));
             }
         }
+
         //this.stepCount += 1;
+        if(state.getStep() == this.predictFutureSeconds * STEPS_PER_SECOND - 2) {
+
+            try {
+                Vehicle[] vs = new Vehicle[3];
+                for (Vehicle v : localVehicles) {
+                    if (v instanceof ProtectedControlledVehicle) {
+                        vs[0] = EngineUtils.getFrontVehicle(v, sandboxEngine.vehicles, v.lane_index);
+                        vs[1] = EngineUtils.getFrontVehicle(v, sandboxEngine.vehicles, v.lane_index - 1);
+                        vs[2] = EngineUtils.getFrontVehicle(v, sandboxEngine.vehicles, v.lane_index + 1);
+                    }
+                }
+                for (int i = 0; i < 3; i++) {
+                    if (vs[i] != null) {
+                        updates.add(new DataStateUpdate(vehicles.size() * VarTable.values().length + 1 + i, sandboxEngine.vehicles.indexOf(vs[i])));
+                    } else {
+                        updates.add(new DataStateUpdate(vehicles.size() * VarTable.values().length + 1 + i, -1.0));
+                    }
+                }
+                this.finalVehicles = sandboxEngine.vehicles;
+
+            }catch(Exception e){
+                e.printStackTrace();
+            }
+        }
 
 
         return updates;

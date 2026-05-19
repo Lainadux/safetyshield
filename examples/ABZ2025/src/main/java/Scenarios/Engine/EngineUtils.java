@@ -88,6 +88,16 @@ public class EngineUtils {
     }
 
     /**
+     * return the index of front vehicle, -1 if not found
+     * @param thisCar
+     * @param environments
+     * @param LaneNo
+     * @return
+     * @throws Exception
+     */
+
+
+    /**
      * return the rear vehicle in the given lane, if there is no rear vehicle, return null
      *
      * @param thisCar
