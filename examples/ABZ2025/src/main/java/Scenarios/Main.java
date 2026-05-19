@@ -91,6 +91,7 @@ public class Main {
         if(usage == Usage.STARK) {
             double dt = 0.02;
             HighwayEngine realWorld = new HighwayEngine(dt, true);
+            realWorld.enhancedCollisionCheckEnabled = true;
             realWorld.populateTraffic(8, 3, 0.0, 50.0);
             ControlledVehicle egoVehicle = realWorld.getEgoVehicle();
             ProtectedControlledVehicle protectedControlledVehicle = new ProtectedControlledVehicle(egoVehicle);

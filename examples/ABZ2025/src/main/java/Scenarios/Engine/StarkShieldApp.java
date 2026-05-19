@@ -72,6 +72,7 @@ public class StarkShieldApp {
                 Vehicle v = stateToVehicle(ds, i);
                 System.out.println(v);
             }
+            System.out.println("Crashed:"+ ds.get(vehicles.size() * VarTable.values().length));
         });
     }
 
@@ -105,9 +106,14 @@ public class StarkShieldApp {
                 System.out.println("starked ego intention targetspeed: " + v.targetSpeed + ", current speed: " + v.speed);
             }
         }
+        //the last vars:
+        //1. crashed
+        values.put(vehicles.size() * VarTable.values().length, 0.0);
 
 
-        return new DataState(vehicles.size() * VarTable.values().length, i -> values.getOrDefault(i, Double.NaN));
+//        return new DataState(vehicles.size() * VarTable.values().length + 1,
+//                i -> values.getOrDefault(i, Double.NaN));
+        return new DataState(values.size(),i -> values.getOrDefault(i, Double.NaN));
     }
 
     public Controller getController() {
@@ -131,7 +137,8 @@ public class StarkShieldApp {
         }
 
 
-        HighwayEngine sandboxEngine = new HighwayEngine();
+       //HighwayEngine sandboxEngine = new HighwayEngine();
+        SandboxHighwayEngine sandboxEngine = new SandboxHighwayEngine();
         sandboxEngine.dt = this.dt;
         sandboxEngine.STEPS_PER_SECOND = this.STEPS_PER_SECOND;
         sandboxEngine.vehicles = localVehicles;
@@ -179,6 +186,9 @@ public class StarkShieldApp {
             updates.add(new DataStateUpdate(offSet + VarTable.plannedAcceleration.ordinal(), v.plannedAcceleration));
             updates.add(new DataStateUpdate(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering));
             updates.add(new DataStateUpdate(offSet + VarTable.targetSpeed.ordinal(), v.targetSpeed));
+            if(sandboxEngine.crashed){
+                updates.add(new DataStateUpdate(vehicles.size() * VarTable.values().length, 1.0));
+            }
         }
         //this.stepCount += 1;
 
