@@ -26,6 +26,7 @@ import java.util.List;
 
 public class ControlledVehicle extends Vehicle {
     public boolean simulated = false;
+    private HighwayAiClient.AiDecision lastAiDecision = new HighwayAiClient.AiDecision();
 
     public ControlledVehicle() {
         super();
@@ -85,18 +86,55 @@ public class ControlledVehicle extends Vehicle {
         HighwayEngine engine = this.getEngine();
 
         if(engine.stepCount% engine.STEPS_PER_SECOND == 0 ){
-           this.randomActionGenerator();
+            try {
+                this.applyAiAction(HighwayAiClient.getInstance().decide(this));
+            } catch (Exception e) {
+                System.err.println("AI decision failed, falling back to random action: " + e.getMessage());
+                this.randomActionGenerator();
+            }
         }
 
     }
     public void fetchDesiredLaneAndTargetSpeed(boolean random) throws Exception {
         if(random) this.randomActionGenerator();
         else{
-            throw new Exception("try random");
+            this.applyAiAction(HighwayAiClient.getInstance().decide(this));
 
         }
 
     }
+    protected void applyAiAction(HighwayAiClient.AiDecision decision) {
+        this.lastAiDecision = decision;
+        String action = decision.action_name == null ? "" : decision.action_name.trim().toUpperCase();
+        if (action.isEmpty()) {
+            action = switch (decision.action) {
+                case 0 -> "LANE_LEFT";
+                case 2 -> "LANE_RIGHT";
+                case 3 -> "FASTER";
+                case 4 -> "SLOWER";
+                default -> "IDLE";
+            };
+        }
+
+        switch (action) {
+            case "LANE_LEFT" -> this.setTargetLaneIndex(clampLane(this.getLaneIndex() + 1));
+            case "LANE_RIGHT" -> this.setTargetLaneIndex(clampLane(this.getLaneIndex() - 1));
+            case "FASTER" -> this.targetSpeed += 5;
+            case "SLOWER" -> this.targetSpeed = Math.max(0, this.targetSpeed - 5);
+            default -> {
+            }
+        }
+    }
+
+    private int clampLane(int lane) {
+        HighwayEngine engine = this.getEngine();
+        return Math.max(0, Math.min(engine.numLanes - 1, lane));
+    }
+
+    public HighwayAiClient.AiDecision getLastAiDecision() {
+        return lastAiDecision;
+    }
+
     public void randomActionGenerator(){
 
         boolean changeLane = Math.random() < 0.3;

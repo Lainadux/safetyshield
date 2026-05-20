@@ -74,7 +74,7 @@ public class StarkShieldApp {
         initialState = this.getInitialState(vehicles);
         system = new ControlledSystem(getController(), (rg, ds) -> ds.apply(this.getEnvironmentUpdates(rg, ds)), initialState);
         sequence = new EvolutionSequence(new SilentMonitor("Vehicle"), new DefaultRandomGenerator(), rg -> system, EVOLUTION_SEQUENCE_SIZE);
-        printSummary();
+        //printSummary();
     }
 
     private void printSummary() {
@@ -241,11 +241,11 @@ public class StarkShieldApp {
     }
 
     private DataState getInitialState(List<Vehicle> vehicles) {
-        System.out.println("initial state fetched by stark:");
-        for (Vehicle v : vehicles) {
-
-            System.out.println(v);
-        }
+//        System.out.println("initial state fetched by stark:");
+//        for (Vehicle v : vehicles) {
+//
+//            System.out.println(v);
+//        }
 
         Map<Integer, Double> values = new HashMap<>();
         for (int i = 0; i < vehicles.size(); i++) {
@@ -266,9 +266,9 @@ public class StarkShieldApp {
             values.put(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering);
             values.put(offSet + VarTable.role.ordinal(), v.role.equals("EGO") ? 0.0 : 1.0);
             values.put(offSet + VarTable.targetSpeed.ordinal(), v.targetSpeed);
-            if(v.role.equals("EGO")){
-                System.out.println("starked ego intention targetspeed: " + v.targetSpeed + ", current speed: " + v.speed);
-            }
+//            if(v.role.equals("EGO")){
+//                System.out.println("starked ego intention targetspeed: " + v.targetSpeed + ", current speed: " + v.speed);
+//            }
         }
         //the last vars:
         //1. crashed

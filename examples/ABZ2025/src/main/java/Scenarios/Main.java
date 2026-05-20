@@ -23,8 +23,12 @@
 package Scenarios;
 
 import Scenarios.Engine.*;
+import java.awt.KeyEventDispatcher;
+import java.awt.KeyboardFocusManager;
+import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 public class Main {
     enum Usage{
@@ -34,6 +38,7 @@ public class Main {
         DEBUG
     }
     public static void main(String[] args) throws Exception {
+        //System.err.println("---------");
         Usage usage;
         usage = Usage.ENGINE;
         usage = Usage.RECOVERFROMLOG;
@@ -157,8 +162,13 @@ public class Main {
                     StarkShieldApp starkShieldApp = engine.createStarkShieldApp(4);
                     isSafe = starkShieldApp.verifySafe();
                     if(!isSafe){
+                        HighwayAiClient.AiDecision unsafeDecision = protectedControlledVehicle.getLastAiDecision();
+                        System.out.printf("Unsafe AI decision: action=%d, action_name=%s%n",
+                                unsafeDecision.action, unsafeDecision.action_name);
                         protectedControlledVehicle.targetSpeed = prevTgtspd -5 <0? 0: prevTgtspd -5;
                         protectedControlledVehicle.setTargetLaneIndex(prevCurrentLane);
+                        waitForSpaceToContinue(realWorld);
+
                     }
                 }
                 realWorld.step();
@@ -216,6 +226,28 @@ public class Main {
 
 
 
+    }
+
+    private static void waitForSpaceToContinue(HighwayEngine engine) throws InterruptedException {
+        System.out.println("Unsafe AI decision detected. Simulation paused. Press SPACE in the simulator window to continue.");
+        engine.render();
+
+        CountDownLatch spacePressed = new CountDownLatch(1);
+        KeyEventDispatcher dispatcher = event -> {
+            if (event.getID() == KeyEvent.KEY_PRESSED && event.getKeyCode() == KeyEvent.VK_SPACE) {
+                spacePressed.countDown();
+                return true;
+            }
+            return false;
+        };
+
+        KeyboardFocusManager focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager();
+        focusManager.addKeyEventDispatcher(dispatcher);
+        try {
+            spacePressed.await();
+        } finally {
+            focusManager.removeKeyEventDispatcher(dispatcher);
+        }
     }
 
     public static List<Vehicle> fetchInitialVehicles(double dt, int numVehicles, int numLanes, double minX, double maxX){
