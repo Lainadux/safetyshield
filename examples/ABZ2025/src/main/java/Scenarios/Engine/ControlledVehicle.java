@@ -117,8 +117,8 @@ public class ControlledVehicle extends Vehicle {
         }
 
         switch (action) {
-            case "LANE_LEFT" -> this.setTargetLaneIndex(clampLane(this.getLaneIndex() + 1));
-            case "LANE_RIGHT" -> this.setTargetLaneIndex(clampLane(this.getLaneIndex() - 1));
+            case "LANE_LEFT" -> this.setTargetLaneIndex(clampLane(this.getLaneIndex() - 1));
+            case "LANE_RIGHT" -> this.setTargetLaneIndex(clampLane(this.getLaneIndex() + 1));
             case "FASTER" -> this.targetSpeed += 5;
             case "SLOWER" -> this.targetSpeed = Math.max(0, this.targetSpeed - 5);
             default -> {

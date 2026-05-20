@@ -114,6 +114,61 @@ public class StarkShieldApp {
         return robustness >= MIN_ACCEPTABLE_ROBUSTNESS;
     }
 
+    public String getUnsafeDiagnosis() {
+        int lastStep = this.predictFutureSeconds * STEPS_PER_SECOND - 1;
+        dss = sequence.get(lastStep);
+        return dss.stream()
+                .findFirst()
+                .map(ss -> diagnoseState(ss.getDataState(), lastStep))
+                .orElse("No prediction state available for unsafe diagnosis.");
+    }
+
+    private String diagnoseState(DataState state, int lastStep) {
+        int egoIndex = getEgoVehicleIndex(state);
+        StringBuilder diagnosis = new StringBuilder();
+        diagnosis.append(String.format("Shield diagnosis at prediction step %d: crashed=%.0f",
+                lastStep, state.get(crashedIndex())));
+
+        if (egoIndex < 0) {
+            diagnosis.append(", ego not found");
+            return diagnosis.toString();
+        }
+
+        int egoOffset = vehicleOffset(egoIndex);
+        int egoLane = (int) state.get(egoOffset + VarTable.lane_index.ordinal());
+        diagnosis.append(String.format(", egoLane=%d, egoX=%.2f, egoSpeed=%.2f, egoTargetSpeed=%.2f",
+                egoLane,
+                state.get(egoOffset + VarTable.x.ordinal()),
+                state.get(egoOffset + VarTable.speed.ordinal()),
+                state.get(egoOffset + VarTable.targetSpeed.ordinal())));
+
+        for (int lane = egoLane - 1; lane <= egoLane + 1; lane++) {
+            int frontIndex = getFrontVehicleIndexInLane(state, egoIndex, lane);
+            if (frontIndex >= 0) {
+                int frontOffset = vehicleOffset(frontIndex);
+                double frontGap = state.get(frontOffset + VarTable.x.ordinal()) - state.get(egoOffset + VarTable.x.ordinal()) - VEHICLE_LENGTH;
+                double closingSpeed = Math.max(0.0, state.get(egoOffset + VarTable.vx.ordinal()) - state.get(frontOffset + VarTable.vx.ordinal()));
+                double penalty = frontVehicleStabilityPenalty(state, egoIndex, frontIndex);
+                diagnosis.append(String.format("%n  front lane=%d vehicleId=%s vehicleIndex=%d gap=%.2f closingSpeed=%.2f penalty=%.3f",
+                        lane,
+                        vehicleId(state, frontIndex),
+                        frontIndex,
+                        frontGap,
+                        closingSpeed,
+                        penalty));
+            }
+        }
+
+        diagnosis.append(String.format("%n  totalFrontStabilityPenalty=%.3f threshold=%.3f",
+                frontVehicleStabilityPenalty(state), STABILITY_DISTANCE_THRESHOLD));
+        return diagnosis.toString();
+    }
+
+    private String vehicleId(DataState state, int vehicleIndex) {
+        int offset = vehicleOffset(vehicleIndex);
+        return String.valueOf((int) state.get(offset + VarTable.id.ordinal()));
+    }
+
     private DataState resetCrashState(RandomGenerator rg, DataState state) {
         return state.apply(List.of(new DataStateUpdate(crashedIndex(), 0.0)));
     }

@@ -165,6 +165,7 @@ public class Main {
                         HighwayAiClient.AiDecision unsafeDecision = protectedControlledVehicle.getLastAiDecision();
                         System.out.printf("Unsafe AI decision: action=%d, action_name=%s%n",
                                 unsafeDecision.action, unsafeDecision.action_name);
+                        System.out.println(starkShieldApp.getUnsafeDiagnosis());
                         protectedControlledVehicle.targetSpeed = prevTgtspd -5 <0? 0: prevTgtspd -5;
                         protectedControlledVehicle.setTargetLaneIndex(prevCurrentLane);
                         waitForSpaceToContinue(realWorld);
