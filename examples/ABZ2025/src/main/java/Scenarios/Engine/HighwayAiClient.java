@@ -17,6 +17,8 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class HighwayAiClient {
+    //private static final String DEFAULT_AI_PROFILE = "base";
+    private static final String DEFAULT_AI_PROFILE = "adversarial";
     private static final Gson GSON = new Gson();
     private static final HighwayAiClient INSTANCE = new HighwayAiClient();
 
@@ -65,7 +67,8 @@ public class HighwayAiClient {
         ProcessBuilder builder = new ProcessBuilder(
                 python.toString(),
                 script.toString(),
-                "ai-server"
+                "ai-server",
+                resolveAiProfile()
         );
         builder.directory(script.getParent().toFile());
         builder.redirectError(ProcessBuilder.Redirect.INHERIT);
@@ -79,6 +82,7 @@ public class HighwayAiClient {
             stop();
             throw new IOException("AI server did not become ready");
         }
+        System.out.println("AI server ready: " + ready);
     }
 
     private List<Map<String, Object>> toVehiclePayload(ControlledVehicle ego) {
@@ -146,6 +150,17 @@ public class HighwayAiClient {
         return resolveCodesRoot()
                 .resolve("abz2025_casestudy_autonomous_driving")
                 .resolve("HighwayEnvironment_Base.py");
+    }
+
+    private String resolveAiProfile() {
+        String configured = System.getProperty("abz.ai.profile");
+        if (configured == null || configured.isBlank()) {
+            configured = System.getenv("ABZ_AI_PROFILE");
+        }
+        if (configured == null || configured.isBlank()) {
+            return DEFAULT_AI_PROFILE;
+        }
+        return configured;
     }
 
     private Path resolveCodesRoot() {

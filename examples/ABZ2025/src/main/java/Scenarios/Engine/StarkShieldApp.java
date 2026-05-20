@@ -226,6 +226,9 @@ public class StarkShieldApp {
         double frontVx = state.get(frontOffset + VarTable.vx.ordinal());
         double frontGap = frontX - egoX - VEHICLE_LENGTH;
         double closingSpeed = Math.max(0.0, egoVx - frontVx);
+        if (closingSpeed == 0.0) {
+            return 0.0;
+        }
         double distanceViolation = Math.max(0.0, MIN_STABLE_FRONT_GAP - frontGap) / MIN_STABLE_FRONT_GAP;
         double speedViolation = Math.max(0.0, closingSpeed - MAX_STABLE_RELATIVE_SPEED) / MAX_STABLE_RELATIVE_SPEED;
         return Math.min(1.0, distanceViolation + speedViolation);

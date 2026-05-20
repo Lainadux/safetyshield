@@ -159,18 +159,18 @@ public class Main {
                         }
                     }
                     HighwayEngine engine = new HighwayEngine(dt, true, true, vehicles);
-                    StarkShieldApp starkShieldApp = engine.createStarkShieldApp(4);
+                    StarkShieldApp starkShieldApp = engine.createStarkShieldApp(3);
                     isSafe = starkShieldApp.verifySafe();
+                    HighwayAiClient.AiDecision decision = protectedControlledVehicle.getLastAiDecision();
+                    System.out.printf("%s AI decision: action=%d, action_name=%s%n",
+                            isSafe ? "Safe" : "Unsafe", decision.action, decision.action_name);
+                    System.out.println(starkShieldApp.getUnsafeDiagnosis());
                     if(!isSafe){
-                        HighwayAiClient.AiDecision unsafeDecision = protectedControlledVehicle.getLastAiDecision();
-                        System.out.printf("Unsafe AI decision: action=%d, action_name=%s%n",
-                                unsafeDecision.action, unsafeDecision.action_name);
-                        System.out.println(starkShieldApp.getUnsafeDiagnosis());
                         protectedControlledVehicle.targetSpeed = prevTgtspd -5 <0? 0: prevTgtspd -5;
                         protectedControlledVehicle.setTargetLaneIndex(prevCurrentLane);
-                        waitForSpaceToContinue(realWorld);
 
                     }
+                    waitForSpaceToContinue(realWorld);
                 }
                 realWorld.step();
                 realWorld.render();
