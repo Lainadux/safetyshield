@@ -97,7 +97,8 @@ public class Main {
             double dt = 0.02;
             HighwayEngine realWorld = new HighwayEngine(dt, true);
             realWorld.enhancedCollisionCheckEnabled = true;
-            realWorld.populateTraffic(7, 3, 0.0, 80.0);
+            //realWorld.populateTraffic(7, 3, 0.0, 80.0);
+            realWorld.populateTraffic(18, 3, 0.0, 200);
             ControlledVehicle egoVehicle = realWorld.getEgoVehicle();
             ProtectedControlledVehicle protectedControlledVehicle = new ProtectedControlledVehicle(egoVehicle);
             realWorld.setEgoVehicle(protectedControlledVehicle);
@@ -230,7 +231,7 @@ public class Main {
     }
 
     private static void waitForSpaceToContinue(HighwayEngine engine) throws InterruptedException {
-        System.out.println("Unsafe AI decision detected. Simulation paused. Press SPACE in the simulator window to continue.");
+        //System.out.println("Unsafe AI decision detected. Simulation paused. Press SPACE in the simulator window to continue.");
         engine.render();
 
         CountDownLatch spacePressed = new CountDownLatch(1);

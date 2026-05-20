@@ -41,6 +41,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
 
 public class StarkShieldApp {
     public int predictFutureSeconds = 1;
@@ -64,14 +65,19 @@ public class StarkShieldApp {
     private EvolutionSequence sequence;
     private SampleSet<SystemState> dss;
 
+    private List<Vehicle> filteredVehicles;
+
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds) {
         this.engine = engine;
         this.dt = engine.dt;
         this.STEPS_PER_SECOND = engine.STEPS_PER_SECOND;
         this.predictFutureSeconds = predictFutureSeconds;
-
         this.vehicles = vehicles;
-        initialState = this.getInitialState(vehicles);
+        this.filteredVehicles = getVehiclesWithinEgoRangeIncludingEgo(100.0);
+        this.vehicles = this.filteredVehicles;
+
+        //initialState = this.getInitialState(vehicles);
+        initialState = this.getInitialState(this.vehicles);
         system = new ControlledSystem(getController(), (rg, ds) -> ds.apply(this.getEnvironmentUpdates(rg, ds)), initialState);
         sequence = new EvolutionSequence(new SilentMonitor("Vehicle"), new DefaultRandomGenerator(), rg -> system, EVOLUTION_SEQUENCE_SIZE);
         //printSummary();
@@ -296,6 +302,42 @@ public class StarkShieldApp {
 
     private int crashedIndex() {
         return vehicles.size() * VarTable.values().length;
+    }
+
+    public List<Vehicle> getVehiclesWithinEgoRange(double rangeMeters) {
+        Vehicle ego = getEgoVehicle();
+        if (ego == null) {
+            return List.of();
+        }
+        return vehicles.stream()
+                .filter(vehicle -> vehicle != ego)
+                .filter(vehicle -> Math.abs(vehicle.x - ego.x) <= rangeMeters)
+                .sorted(Comparator.comparingDouble(vehicle -> Math.abs(vehicle.x - ego.x)))
+                .toList();
+    }
+
+    public List<Vehicle> getVehiclesWithinOneHundredMetersOfEgo() {
+        return getVehiclesWithinEgoRange(100.0);
+    }
+
+    private List<Vehicle> getVehiclesWithinEgoRangeIncludingEgo(double rangeMeters) {
+        Vehicle ego = getEgoVehicle();
+        if (ego == null) {
+            return List.of();
+        }
+        List<Vehicle> nearbyVehicles = new LinkedList<>();
+        nearbyVehicles.add(ego);
+        nearbyVehicles.addAll(getVehiclesWithinEgoRange(rangeMeters));
+        return nearbyVehicles;
+    }
+
+    private Vehicle getEgoVehicle() {
+        for (Vehicle vehicle : vehicles) {
+            if ("EGO".equals(vehicle.role)) {
+                return vehicle;
+            }
+        }
+        return null;
     }
 
     private DataState getInitialState(List<Vehicle> vehicles) {

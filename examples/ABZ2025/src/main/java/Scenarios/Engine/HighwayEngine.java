@@ -221,6 +221,9 @@ public class HighwayEngine {
 
 
             v.x = x;
+            if(v.role.equals("EGO")){
+                v.x = 0;
+            }
             v.y = yCenter;
            // v.lane_index = lane;
             //v.target_lane_index = lane;
