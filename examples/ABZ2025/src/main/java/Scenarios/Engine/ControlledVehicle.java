@@ -111,10 +111,10 @@ public class ControlledVehicle extends Vehicle {
         }
         else{
             double rand = Math.random();
-            if(rand < 0.6){
+            if(rand < 0.2){
                 //涓嶅彉閫?
             }
-            else if(rand < 0.9){
+            else if(rand < 1){
                 //鍔犻€?
                 this.targetSpeed += 5;
             }

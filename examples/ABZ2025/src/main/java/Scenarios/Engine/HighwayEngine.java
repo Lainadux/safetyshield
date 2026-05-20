@@ -389,7 +389,7 @@ public class HighwayEngine {
         int topMargin = 100;
 
 
-        double cameraX = vehicles.isEmpty() ? 0 : vehicles.get(0).x;
+        double cameraX = vehicles.isEmpty() ? 0 : getCameraVehicle().x;
         int offsetX = (int) (screenWidth / 2 - cameraX * SCALE); // 鎶婅溅鏀惧湪灞忓箷宸︿晶 1/3 澶?
 
         g2d.setColor(Color.WHITE);
@@ -475,6 +475,27 @@ public class HighwayEngine {
             g2d.drawString(String.format("id:%s", v.id), px - 15, py);
             //karma_a_new
             //g2d.drawString(String.format("karma_a_new:%.2f", v.karma_a_new), px - 15, py + 250);
+        }
+    }
+
+    private Vehicle getCameraVehicle() {
+        Vehicle cameraVehicle = vehicles.get(0);
+        int cameraId = parseVehicleId(cameraVehicle.id);
+        for (Vehicle vehicle : vehicles) {
+            int vehicleId = parseVehicleId(vehicle.id);
+            if (vehicleId < cameraId) {
+                cameraVehicle = vehicle;
+                cameraId = vehicleId;
+            }
+        }
+        return cameraVehicle;
+    }
+
+    private int parseVehicleId(String id) {
+        try {
+            return Integer.parseInt(id);
+        } catch (NumberFormatException e) {
+            return Integer.MAX_VALUE;
         }
     }
    public void checkCollisions() {

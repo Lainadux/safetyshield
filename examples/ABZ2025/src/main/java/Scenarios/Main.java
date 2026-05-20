@@ -92,19 +92,23 @@ public class Main {
             double dt = 0.02;
             HighwayEngine realWorld = new HighwayEngine(dt, true);
             realWorld.enhancedCollisionCheckEnabled = true;
-            realWorld.populateTraffic(6, 3, 0.0, 80.0);
+            realWorld.populateTraffic(7, 3, 0.0, 80.0);
             ControlledVehicle egoVehicle = realWorld.getEgoVehicle();
             ProtectedControlledVehicle protectedControlledVehicle = new ProtectedControlledVehicle(egoVehicle);
             realWorld.setEgoVehicle(protectedControlledVehicle);
 
             boolean isSafe = true;
             int timeForSimulation = 40;
-
+            double prevTgtspd = 0.0;
+            int prevCurrentLane = 0;
             while (realWorld.stepCount != timeForSimulation * realWorld.STEPS_PER_SECOND - 1) {
 
             //while (realWorld.stepCount  <=  0) {
                 //when the ego has taken an decision
                 if(realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0){
+                    prevTgtspd = protectedControlledVehicle.targetSpeed;
+                    prevCurrentLane = protectedControlledVehicle.getLaneIndex();
+
                     protectedControlledVehicle.fetchDesiredLaneAndTargetSpeed();
 //                    System.out.println("real world scenario");
 //                    for(Vehicle v: realWorld.vehicles){
@@ -134,6 +138,7 @@ public class Main {
 //                    StarkShieldApp starkShieldApp = engine.createStarkShieldApp(10);
 //                }
                 //test shield
+
                 if(realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0){
                     //egoVehicle.fetchDesiredLaneAndTargetSpeed();
                     List<Vehicle> vehicles = new ArrayList<>();
@@ -152,8 +157,8 @@ public class Main {
                     StarkShieldApp starkShieldApp = engine.createStarkShieldApp(4);
                     isSafe = starkShieldApp.verifySafe();
                     if(!isSafe){
-                        protectedControlledVehicle.targetSpeed = protectedControlledVehicle.targetSpeed<0?0:protectedControlledVehicle.targetSpeed-5;
-                        protectedControlledVehicle.setTargetLaneIndex(protectedControlledVehicle.lane_index);
+                        protectedControlledVehicle.targetSpeed = prevTgtspd -5 <0? 0: prevTgtspd -5;
+                        protectedControlledVehicle.setTargetLaneIndex(prevCurrentLane);
                     }
                 }
                 realWorld.step();
