@@ -42,6 +42,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Comparator;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class StarkShieldApp {
     public int predictFutureSeconds = 1;
@@ -55,7 +56,9 @@ public class StarkShieldApp {
     private static final double FIRST_SECOND_SAFETY_DISTANCE_THRESHOLD = 0.1;
     private static final double FIRST_SECOND_LOOKAHEAD_TIME = 1.0;
     private static final double FIRST_SECOND_MIN_FRONT_GAP = 2.0;
-    private static final double FRONT_ACCELERATION_UNCERTAINTY = 3.0;
+    private static final double MIN_FRONT_ACCELERATION_UNCERTAINTY = 0.5;
+    private static final double MAX_FRONT_ACCELERATION_UNCERTAINTY = 5.0;
+    private static final double FRONT_ACCELERATION_UNCERTAINTY_GAIN = 1.0;
     private static final int EVOLUTION_SEQUENCE_SIZE = 10;
     //public int stepCount = 0;
     private List<Vehicle> finalVehicles;
@@ -74,6 +77,8 @@ public class StarkShieldApp {
     private double lastShieldRobustness = Double.NaN;
 
     private List<Vehicle> filteredVehicles;
+    private Map<String, Double> observedAccelerationByVehicleId = new HashMap<>();
+    private Map<String, Double> frontAccelerationUncertaintyByVehicleId = new ConcurrentHashMap<>();
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds) {
         this.engine = engine;
@@ -83,6 +88,7 @@ public class StarkShieldApp {
         this.vehicles = vehicles;
         this.filteredVehicles = getVehiclesWithinEgoRangeIncludingEgo(100.0);
         this.vehicles = this.filteredVehicles;
+        this.observedAccelerationByVehicleId = getObservedAccelerationByVehicleId(this.vehicles);
 
         //initialState = this.getInitialState(vehicles);
         initialState = this.getInitialState(this.vehicles);
@@ -264,7 +270,8 @@ public class StarkShieldApp {
         double frontVx = state.get(frontOffset + VarTable.vx.ordinal());
         double egoAcceleration = state.get(egoOffset + VarTable.plannedAcceleration.ordinal());
         double frontAcceleration = state.get(frontOffset + VarTable.plannedAcceleration.ordinal());
-        double safetyGap = calculateOneSecondWorstCaseSafetyGap(egoVx, frontVx, egoAcceleration, frontAcceleration);
+        double frontAccelerationUncertainty = getFrontAccelerationUncertainty(state, frontIndex);
+        double safetyGap = calculateOneSecondWorstCaseSafetyGap(egoVx, frontVx, egoAcceleration, frontAcceleration, frontAccelerationUncertainty);
         return state.apply(List.of(
                 new DataStateUpdate(egoOffset + VarTable.x.ordinal(), frontX - VEHICLE_LENGTH - safetyGap)
         ));
@@ -312,22 +319,31 @@ public class StarkShieldApp {
         double egoAcceleration = state.get(egoOffset + VarTable.plannedAcceleration.ordinal());
         double frontAcceleration = state.get(frontOffset + VarTable.plannedAcceleration.ordinal());
         double frontGap = frontX - egoX - VEHICLE_LENGTH;
-        double safetyGap = calculateOneSecondWorstCaseSafetyGap(egoVx, frontVx, egoAcceleration, frontAcceleration);
+        double frontAccelerationUncertainty = getFrontAccelerationUncertainty(state, frontIndex);
+        double safetyGap = calculateOneSecondWorstCaseSafetyGap(egoVx, frontVx, egoAcceleration, frontAcceleration, frontAccelerationUncertainty);
         if (safetyGap <= 0.0) {
             return 0.0;
         }
         return Math.min(1.0, Math.max(0.0, safetyGap - frontGap) / safetyGap);
     }
 
-    private double calculateOneSecondWorstCaseSafetyGap(double egoVx, double frontVx, double egoAcceleration, double frontAcceleration) {
+    private double calculateOneSecondWorstCaseSafetyGap(double egoVx, double frontVx, double egoAcceleration,
+                                                       double frontAcceleration, double frontAccelerationUncertainty) {
         double egoSpeed = Math.max(0.0, egoVx);
         double frontSpeed = Math.max(0.0, frontVx);
-        double frontWorstAcceleration = frontAcceleration - FRONT_ACCELERATION_UNCERTAINTY;
+        double frontWorstAcceleration = frontAcceleration - frontAccelerationUncertainty;
         double relativeClosingDistance =
                 (egoSpeed - frontSpeed) * FIRST_SECOND_LOOKAHEAD_TIME
                         + 0.5 * (egoAcceleration - frontWorstAcceleration)
                         * FIRST_SECOND_LOOKAHEAD_TIME * FIRST_SECOND_LOOKAHEAD_TIME;
         return FIRST_SECOND_MIN_FRONT_GAP + Math.max(0.0, relativeClosingDistance);
+    }
+
+    private double getFrontAccelerationUncertainty(DataState state, int frontIndex) {
+        return frontAccelerationUncertaintyByVehicleId.getOrDefault(
+                vehicleId(state, frontIndex),
+                MIN_FRONT_ACCELERATION_UNCERTAINTY
+        );
     }
 
     private double frontVehicleStabilityPenalty(DataState state, int egoIndex, int frontIndex) {
@@ -545,6 +561,9 @@ public class StarkShieldApp {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        if (currentStep == 0) {
+            recordFirstInternalAccelerationUncertainty(localVehicles);
+        }
         for (int i = 0; i < numsVehicles; i++) {
             Vehicle v = localVehicles.get(i);
             int offSet = i * VarTable.values().length;
@@ -596,6 +615,29 @@ public class StarkShieldApp {
 
 
         return updates;
+    }
+
+    private Map<String, Double> getObservedAccelerationByVehicleId(List<Vehicle> vehicles) {
+        Map<String, Double> observedAccelerations = new HashMap<>();
+        for (Vehicle vehicle : vehicles) {
+            observedAccelerations.put(vehicle.id, vehicle.plannedAcceleration);
+        }
+        return observedAccelerations;
+    }
+
+    private void recordFirstInternalAccelerationUncertainty(List<Vehicle> localVehicles) {
+        for (Vehicle vehicle : localVehicles) {
+            Double observedAcceleration = observedAccelerationByVehicleId.get(vehicle.id);
+            if (observedAcceleration == null) {
+                continue;
+            }
+            double accelerationDifference = Math.abs(observedAcceleration - vehicle.plannedAcceleration);
+            double uncertainty = MIN_FRONT_ACCELERATION_UNCERTAINTY
+                    + FRONT_ACCELERATION_UNCERTAINTY_GAIN * accelerationDifference;
+            uncertainty = Math.max(MIN_FRONT_ACCELERATION_UNCERTAINTY,
+                    Math.min(MAX_FRONT_ACCELERATION_UNCERTAINTY, uncertainty));
+            frontAccelerationUncertaintyByVehicleId.putIfAbsent(vehicle.id, uncertainty);
+        }
     }
 
     public static Vehicle stateToVehicle(DataState state, int vehicleIndex) {
