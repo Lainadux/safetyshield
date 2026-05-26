@@ -52,6 +52,10 @@ public class StarkShieldApp {
     private static final double VEHICLE_LENGTH = 5.0;
     private static final double MIN_STABLE_FRONT_GAP = 15.0;
     private static final double MAX_STABLE_RELATIVE_SPEED = 2.0;
+    private static final double FIRST_SECOND_SAFETY_DISTANCE_THRESHOLD = 0.1;
+    private static final double FIRST_SECOND_LOOKAHEAD_TIME = 1.0;
+    private static final double FIRST_SECOND_MIN_FRONT_GAP = 2.0;
+    private static final double FRONT_ACCELERATION_UNCERTAINTY = 3.0;
     private static final int EVOLUTION_SEQUENCE_SIZE = 10;
     //public int stepCount = 0;
     private List<Vehicle> finalVehicles;
@@ -64,6 +68,10 @@ public class StarkShieldApp {
     private ControlledSystem system;
     private EvolutionSequence sequence;
     private SampleSet<SystemState> dss;
+    private double lastCollisionRobustness = Double.NaN;
+    private double lastFirstSecondSafetyRobustness = Double.NaN;
+    private double lastStabilityRobustness = Double.NaN;
+    private double lastShieldRobustness = Double.NaN;
 
     private List<Vehicle> filteredVehicles;
 
@@ -105,19 +113,32 @@ public class StarkShieldApp {
 
     public boolean verifySafe(){
         int lastStep = this.predictFutureSeconds * STEPS_PER_SECOND - 1;
+        int firstSecondLastStep = Math.min(STEPS_PER_SECOND - 1, lastStep);
         DisTLFormula noCollision = new AlwaysDisTLFormula(
                 new TargetDisTLFormula(this::resetCrashState, this::crashPenalty, CRASH_DISTANCE_THRESHOLD),
                 0,
                 lastStep
+        );
+        DisTLFormula safeFrontDistanceAtFirstSecond = new AlwaysDisTLFormula(
+                new TargetDisTLFormula(this::stabilizeEgoAtFrontSafetyDistance, this::firstSecondFrontSafetyPenalty, FIRST_SECOND_SAFETY_DISTANCE_THRESHOLD),
+                firstSecondLastStep,
+                firstSecondLastStep
         );
         DisTLFormula stableAtLastStep = new AlwaysDisTLFormula(
                 new TargetDisTLFormula(this::stabilizeEgoAgainstFrontVehicle, this::frontVehicleStabilityPenalty, STABILITY_DISTANCE_THRESHOLD),
                 lastStep,
                 lastStep
         );
-        DisTLFormula shieldCondition = new ConjunctionDisTLFormula(noCollision, stableAtLastStep);
-        double robustness = new DoubleSemanticsVisitor().eval(shieldCondition).eval(EVOLUTION_SEQUENCE_SIZE, 0, sequence);
-        return robustness >= MIN_ACCEPTABLE_ROBUSTNESS;
+        DisTLFormula shieldCondition = new ConjunctionDisTLFormula(
+                noCollision,
+                new ConjunctionDisTLFormula(safeFrontDistanceAtFirstSecond, stableAtLastStep)
+        );
+        DoubleSemanticsVisitor semantics = new DoubleSemanticsVisitor();
+        lastCollisionRobustness = semantics.eval(noCollision).eval(EVOLUTION_SEQUENCE_SIZE, 0, sequence);
+        lastFirstSecondSafetyRobustness = semantics.eval(safeFrontDistanceAtFirstSecond).eval(EVOLUTION_SEQUENCE_SIZE, 0, sequence);
+        lastStabilityRobustness = semantics.eval(stableAtLastStep).eval(EVOLUTION_SEQUENCE_SIZE, 0, sequence);
+        lastShieldRobustness = semantics.eval(shieldCondition).eval(EVOLUTION_SEQUENCE_SIZE, 0, sequence);
+        return lastShieldRobustness >= MIN_ACCEPTABLE_ROBUSTNESS;
     }
 
     public String getUnsafeDiagnosis() {
@@ -134,6 +155,9 @@ public class StarkShieldApp {
         StringBuilder diagnosis = new StringBuilder();
         diagnosis.append(String.format("Shield diagnosis at prediction step %d: crashed=%.0f",
                 lastStep, state.get(crashedIndex())));
+        diagnosis.append(String.format("%n  DisTL robustness: collision=%.3f firstSecondSafety=%.3f stability=%.3f shield=%.3f minAcceptable=%.3f",
+                lastCollisionRobustness, lastFirstSecondSafetyRobustness, lastStabilityRobustness, lastShieldRobustness, MIN_ACCEPTABLE_ROBUSTNESS));
+        diagnosis.append(rawPenaltySummary());
 
         if (egoIndex < 0) {
             diagnosis.append(", ego not found");
@@ -170,6 +194,25 @@ public class StarkShieldApp {
         return diagnosis.toString();
     }
 
+    private String rawPenaltySummary() {
+        if (dss == null || dss.size() == 0) {
+            return "";
+        }
+        double min = Double.POSITIVE_INFINITY;
+        double max = Double.NEGATIVE_INFINITY;
+        double sum = 0.0;
+        int count = 0;
+        for (SystemState systemState : dss.stream().toList()) {
+            double penalty = frontVehicleStabilityPenalty(systemState.getDataState());
+            min = Math.min(min, penalty);
+            max = Math.max(max, penalty);
+            sum += penalty;
+            count++;
+        }
+        return String.format("%n  Raw final penalty samples: count=%d min=%.3f avg=%.3f max=%.3f threshold=%.3f",
+                count, min, sum / count, max, STABILITY_DISTANCE_THRESHOLD);
+    }
+
     private String vehicleId(DataState state, int vehicleIndex) {
         int offset = vehicleOffset(vehicleIndex);
         return String.valueOf((int) state.get(offset + VarTable.id.ordinal()));
@@ -202,6 +245,31 @@ public class StarkShieldApp {
         ));
     }
 
+    private DataState stabilizeEgoAtFrontSafetyDistance(RandomGenerator rg, DataState state) {
+        int egoIndex = getEgoVehicleIndex(state);
+        if (egoIndex < 0) {
+            return state;
+        }
+
+        int egoOffset = vehicleOffset(egoIndex);
+        int egoLane = (int) state.get(egoOffset + VarTable.lane_index.ordinal());
+        int frontIndex = getFrontVehicleIndexInLane(state, egoIndex, egoLane);
+        if (frontIndex < 0) {
+            return state;
+        }
+
+        int frontOffset = vehicleOffset(frontIndex);
+        double frontX = state.get(frontOffset + VarTable.x.ordinal());
+        double egoVx = state.get(egoOffset + VarTable.vx.ordinal());
+        double frontVx = state.get(frontOffset + VarTable.vx.ordinal());
+        double egoAcceleration = state.get(egoOffset + VarTable.plannedAcceleration.ordinal());
+        double frontAcceleration = state.get(frontOffset + VarTable.plannedAcceleration.ordinal());
+        double safetyGap = calculateOneSecondWorstCaseSafetyGap(egoVx, frontVx, egoAcceleration, frontAcceleration);
+        return state.apply(List.of(
+                new DataStateUpdate(egoOffset + VarTable.x.ordinal(), frontX - VEHICLE_LENGTH - safetyGap)
+        ));
+    }
+
     private double crashPenalty(DataState state) {
         return state.get(crashedIndex()) > 0.0 ? 1.0 : 0.0;
     }
@@ -221,6 +289,45 @@ public class StarkShieldApp {
             }
         }
         return totalPenalty;
+    }
+
+    private double firstSecondFrontSafetyPenalty(DataState state) {
+        int egoIndex = getEgoVehicleIndex(state);
+        if (egoIndex < 0) {
+            return 0.0;
+        }
+
+        int egoOffset = vehicleOffset(egoIndex);
+        int egoLane = (int) state.get(egoOffset + VarTable.lane_index.ordinal());
+        int frontIndex = getFrontVehicleIndexInLane(state, egoIndex, egoLane);
+        if (frontIndex < 0) {
+            return 0.0;
+        }
+
+        int frontOffset = vehicleOffset(frontIndex);
+        double egoX = state.get(egoOffset + VarTable.x.ordinal());
+        double frontX = state.get(frontOffset + VarTable.x.ordinal());
+        double egoVx = state.get(egoOffset + VarTable.vx.ordinal());
+        double frontVx = state.get(frontOffset + VarTable.vx.ordinal());
+        double egoAcceleration = state.get(egoOffset + VarTable.plannedAcceleration.ordinal());
+        double frontAcceleration = state.get(frontOffset + VarTable.plannedAcceleration.ordinal());
+        double frontGap = frontX - egoX - VEHICLE_LENGTH;
+        double safetyGap = calculateOneSecondWorstCaseSafetyGap(egoVx, frontVx, egoAcceleration, frontAcceleration);
+        if (safetyGap <= 0.0) {
+            return 0.0;
+        }
+        return Math.min(1.0, Math.max(0.0, safetyGap - frontGap) / safetyGap);
+    }
+
+    private double calculateOneSecondWorstCaseSafetyGap(double egoVx, double frontVx, double egoAcceleration, double frontAcceleration) {
+        double egoSpeed = Math.max(0.0, egoVx);
+        double frontSpeed = Math.max(0.0, frontVx);
+        double frontWorstAcceleration = frontAcceleration - FRONT_ACCELERATION_UNCERTAINTY;
+        double relativeClosingDistance =
+                (egoSpeed - frontSpeed) * FIRST_SECOND_LOOKAHEAD_TIME
+                        + 0.5 * (egoAcceleration - frontWorstAcceleration)
+                        * FIRST_SECOND_LOOKAHEAD_TIME * FIRST_SECOND_LOOKAHEAD_TIME;
+        return FIRST_SECOND_MIN_FRONT_GAP + Math.max(0.0, relativeClosingDistance);
     }
 
     private double frontVehicleStabilityPenalty(DataState state, int egoIndex, int frontIndex) {
