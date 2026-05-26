@@ -14,13 +14,19 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
 public class HighwayAiClient {
     //private static final String DEFAULT_AI_PROFILE = "base";
     private static final String DEFAULT_AI_PROFILE = "adversarial";
     private static final Gson GSON = new Gson();
-    private static final HighwayAiClient INSTANCE = new HighwayAiClient();
+    private static final CopyOnWriteArrayList<HighwayAiClient> CLIENTS = new CopyOnWriteArrayList<>();
+    private static final ThreadLocal<HighwayAiClient> INSTANCE = ThreadLocal.withInitial(() -> {
+        HighwayAiClient client = new HighwayAiClient();
+        CLIENTS.add(client);
+        return client;
+    });
 
     private Process process;
     private BufferedWriter input;
@@ -30,7 +36,14 @@ public class HighwayAiClient {
     }
 
     public static HighwayAiClient getInstance() {
-        return INSTANCE;
+        return INSTANCE.get();
+    }
+
+    public static void stopAll() {
+        for (HighwayAiClient client : CLIENTS) {
+            client.stop();
+        }
+        CLIENTS.clear();
     }
 
     public synchronized AiDecision decide(ControlledVehicle ego) throws IOException {

@@ -22,22 +22,23 @@
 
 package Scenarios.Engine;
 
-import com.google.gson.*;
-import java.lang.reflect.Type;
+import com.google.gson.Gson;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
 
-import com.google.gson.*;
 import java.lang.reflect.Type;
 
 public class VehicleAdapter implements JsonDeserializer<Vehicle>, JsonSerializer<Vehicle> {
-
-    // 馃専 鏍稿績鐮村眬鐐癸細鍒涘缓涓€涓病鏈変换浣曡嚜瀹氫箟閫傞厤鍣ㄧ殑鈥滅函鍑€鐗?Gson鈥?
     private static final Gson pureGson = new Gson();
 
     @Override
     public JsonElement serialize(Vehicle src, Type typeOfSrc, JsonSerializationContext context) {
-        // 浣跨敤 pureGson 搴忓垪鍖栵紝闃叉鏃犻檺閫掑綊
         JsonObject result = pureGson.toJsonTree(src).getAsJsonObject();
-        // 鎵撲笂绫诲瀷鎬濇兂閽㈠嵃
         result.addProperty("vehicle_type", src.getClass().getSimpleName());
         return result;
     }
@@ -49,15 +50,14 @@ public class VehicleAdapter implements JsonDeserializer<Vehicle>, JsonSerializer
 
         if (typeElement != null) {
             String type = typeElement.getAsString();
-
-            // 馃専 浣跨敤 pureGson 鍙嶅簭鍒楀寲鍏蜂綋瀛愮被锛屽畠浼氳嚜鍔ㄥ皢 JSON 濉叆 ControlledVehicle 鐨勫瓧娈典腑
+            if ("ProtectedControlledVehicle".equals(type)) {
+                return pureGson.fromJson(json, ProtectedControlledVehicle.class);
+            }
             if ("ControlledVehicle".equals(type)) {
                 return pureGson.fromJson(json, ControlledVehicle.class);
             }
-            // 濡傛灉鏈潵鏈?IDMVehicle, 鍙互鍦ㄨ繖閲屽姞 else if ("IDMVehicle".equals(type)) ...
         }
 
-        // 馃専 榛樿鎯呭喌锛氫娇鐢?pureGson 鍙嶅簭鍒楀寲涓哄熀绫?
         return pureGson.fromJson(json, Vehicle.class);
     }
 }

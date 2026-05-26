@@ -25,41 +25,43 @@ package Scenarios.Engine;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
-import java.io.*;
+
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 
 public class StateSaver {
-    // 寮€鍚?PrettyPrinting 鍙互璁╁鍑虹殑 JSON 鏂囦欢鏈夋崲琛屽拰缂╄繘锛屾柟渚夸汉绫婚槄璇?
     private static final Gson gson = new GsonBuilder()
-            .registerTypeAdapter(Vehicle.class, new VehicleAdapter()) // 娉ㄥ唽閫傞厤鍣?
+            .registerTypeAdapter(Vehicle.class, new VehicleAdapter())
             .setPrettyPrinting()
             .create();
 
-    /**
-     * 灏嗚溅杈嗙姸鎬佷繚瀛樺埌鏂囦欢
-     */
     public static void saveState(List<Vehicle> vehicles, String filePath) {
-        try (FileWriter writer = new FileWriter(filePath)) {
+        File outputFile = new File(filePath);
+        File parent = outputFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IllegalStateException("Could not create state directory: " + parent.getAbsolutePath());
+        }
+
+        try (FileWriter writer = new FileWriter(outputFile)) {
             gson.toJson(vehicles, writer);
-            System.out.println("馃捑 鍦烘櫙宸蹭繚瀛樿嚦: " + filePath);
+            System.out.println("Saved vehicle state: " + outputFile.getAbsolutePath());
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new UncheckedIOException("Failed to save vehicle state: " + filePath, e);
         }
     }
 
-    /**
-     * 浠庢枃浠惰鍙栬溅杈嗙姸鎬?
-     */
     public static List<Vehicle> loadState(String filePath) {
         try (FileReader reader = new FileReader(filePath)) {
-            // 馃専 鍏抽敭锛氬憡璇?GSON 杩欐槸涓€缁?Vehicle 缁勬垚鐨?List
             Type listType = new TypeToken<ArrayList<Vehicle>>(){}.getType();
             return gson.fromJson(reader, listType);
         } catch (IOException e) {
-            System.err.println("鉂?璇诲彇鍦烘櫙澶辫触: " + e.getMessage());
-            return new ArrayList<>();
+            throw new UncheckedIOException("Failed to load vehicle state: " + filePath, e);
         }
     }
 }
