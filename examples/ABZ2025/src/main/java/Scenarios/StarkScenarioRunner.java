@@ -23,7 +23,7 @@ import javax.swing.JOptionPane;
 public final class StarkScenarioRunner {
     public static final double DEFAULT_DT = 0.02;
     public static final int DEFAULT_TIME_FOR_SIMULATION_SECONDS = 40;
-    public static final String DEFAULT_LOG_DIR = "examples/ABZ2025/src/main/java/Scenarios/logs3";
+    public static final String DEFAULT_LOG_DIR = "examples/ABZ2025/src/main/java/Scenarios/logs4";
 
     private static final DateTimeFormatter STATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS");
     private static final AtomicInteger SAVED_STATE_SEQUENCE = new AtomicInteger(0);

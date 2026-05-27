@@ -43,6 +43,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Comparator;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class StarkShieldApp {
@@ -62,6 +63,14 @@ public class StarkShieldApp {
     private static final double MIN_FRONT_ACCELERATION_UNCERTAINTY = 0.5;
     private static final double MAX_FRONT_ACCELERATION_UNCERTAINTY = 5.0;
     private static final double FRONT_ACCELERATION_UNCERTAINTY_GAIN = 1.0;
+    private static final double RANDOM_TARGET_SPEED_MEAN = 30.0;
+    private static final double RANDOM_TARGET_SPEED_STD = 10.0 / 3.0;
+    private static final double RANDOM_TARGET_SPEED_MIN = 20.0;
+    private static final double RANDOM_TARGET_SPEED_MAX = 40.0;
+    private static final double RANDOM_COOLDOWN_MEAN = 0.5;
+    private static final double RANDOM_COOLDOWN_STD = 1.0 / 6.0;
+    private static final double RANDOM_COOLDOWN_MIN = 0.0;
+    private static final double RANDOM_COOLDOWN_MAX = 1.0;
     private static final int EVOLUTION_SEQUENCE_SIZE = 10;
     //public int stepCount = 0;
     private List<Vehicle> finalVehicles;
@@ -82,6 +91,7 @@ public class StarkShieldApp {
     private List<Vehicle> filteredVehicles;
     private Map<String, Double> observedAccelerationByVehicleId = new HashMap<>();
     private Map<String, Double> frontAccelerationUncertaintyByVehicleId = new ConcurrentHashMap<>();
+    private final Random hiddenStateRandom = new Random();
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds) {
         this.engine = engine;
@@ -94,7 +104,7 @@ public class StarkShieldApp {
         this.observedAccelerationByVehicleId = getObservedAccelerationByVehicleId(this.vehicles);
 
         //initialState = this.getInitialState(vehicles);
-        initialState = this.getInitialState(this.vehicles);
+        initialState = this.getInitialStateWithRandomHiddenState(this.vehicles);
         system = new ControlledSystem(getController(), (rg, ds) -> ds.apply(this.getEnvironmentUpdates(rg, ds)), initialState);
         sequence = new EvolutionSequence(new SilentMonitor("Vehicle"), new DefaultRandomGenerator(), rg -> system, EVOLUTION_SEQUENCE_SIZE);
         //printSummary();
@@ -595,6 +605,55 @@ public class StarkShieldApp {
 //        return new DataState(vehicles.size() * VarTable.values().length + 1,
 //                i -> values.getOrDefault(i, Double.NaN));
         return new DataState(values.size(),i -> values.getOrDefault(i, Double.NaN));
+    }
+
+    private DataState getInitialStateWithRandomHiddenState(List<Vehicle> vehicles) {
+        Map<Integer, Double> values = new HashMap<>();
+        for (int i = 0; i < vehicles.size(); i++) {
+            Vehicle v = vehicles.get(i);
+            int offSet = i * VarTable.values().length;
+            values.put(offSet + VarTable.id.ordinal(), Double.valueOf(v.id));
+            values.put(offSet + VarTable.politeness.ordinal(), v.politeness);
+            values.put(offSet + VarTable.cooldownTimer.ordinal(), getRandomCooldownTimer(v));
+            values.put(offSet + VarTable.target_lane_index.ordinal(), (double) v.getTargetLaneIndex());
+            values.put(offSet + VarTable.lane_index.ordinal(), (double) v.getLaneIndex());
+            values.put(offSet + VarTable.x.ordinal(), v.x);
+            values.put(offSet + VarTable.y.ordinal(), v.y);
+            values.put(offSet + VarTable.vx.ordinal(), v.vx);
+            values.put(offSet + VarTable.vy.ordinal(), v.vy);
+            values.put(offSet + VarTable.speed.ordinal(), v.speed);
+            values.put(offSet + VarTable.heading.ordinal(), v.heading);
+            values.put(offSet + VarTable.plannedAcceleration.ordinal(), v.plannedAcceleration);
+            values.put(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering);
+            values.put(offSet + VarTable.role.ordinal(), v.role.equals("EGO") ? 0.0 : 1.0);
+            values.put(offSet + VarTable.targetSpeed.ordinal(), getRandomTargetSpeed(v));
+        }
+        values.put(vehicles.size() * VarTable.values().length, 0.0);
+        values.put(vehicles.size() * VarTable.values().length + 1, -1.0);
+        values.put(vehicles.size() * VarTable.values().length + 2, -1.0);
+        values.put(vehicles.size() * VarTable.values().length + 3, -1.0);
+        return new DataState(values.size(), i -> values.getOrDefault(i, Double.NaN));
+    }
+
+    private double getRandomTargetSpeed(Vehicle vehicle) {
+        if ("EGO".equals(vehicle.role)) {
+            return vehicle.targetSpeed;
+        }
+        return clippedGaussian(RANDOM_TARGET_SPEED_MEAN, RANDOM_TARGET_SPEED_STD,
+                RANDOM_TARGET_SPEED_MIN, RANDOM_TARGET_SPEED_MAX);
+    }
+
+    private double getRandomCooldownTimer(Vehicle vehicle) {
+        if ("EGO".equals(vehicle.role)) {
+            return vehicle.cooldownTimer;
+        }
+        return clippedGaussian(RANDOM_COOLDOWN_MEAN, RANDOM_COOLDOWN_STD,
+                RANDOM_COOLDOWN_MIN, RANDOM_COOLDOWN_MAX);
+    }
+
+    private double clippedGaussian(double mean, double std, double min, double max) {
+        double value = mean + hiddenStateRandom.nextGaussian() * std;
+        return Math.max(min, Math.min(max, value));
     }
 
     public Controller getController() {

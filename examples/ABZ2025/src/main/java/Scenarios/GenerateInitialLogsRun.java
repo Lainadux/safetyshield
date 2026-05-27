@@ -11,7 +11,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class GenerateInitialLogsRun {
-    private static final int LOG_COUNT = 1000;
+    private static final int LOG_COUNT = 100;
     private static final int THREAD_COUNT = 4;
     private static final String LOG_DIR = StarkScenarioRunner.DEFAULT_LOG_DIR;
 
