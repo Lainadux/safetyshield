@@ -71,6 +71,8 @@ public class StarkShieldApp {
     private static final double RANDOM_COOLDOWN_STD = 1.0 / 6.0;
     private static final double RANDOM_COOLDOWN_MIN = 0.0;
     private static final double RANDOM_COOLDOWN_MAX = 1.0;
+    public static final double DEFAULT_SHIELD_EGO_RANGE_METERS = 200.0;
+    public static final boolean DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN = true;
     private static final int EVOLUTION_SEQUENCE_SIZE = 10;
     //public int stepCount = 0;
     private List<Vehicle> finalVehicles;
@@ -92,19 +94,31 @@ public class StarkShieldApp {
     private Map<String, Double> observedAccelerationByVehicleId = new HashMap<>();
     private Map<String, Double> frontAccelerationUncertaintyByVehicleId = new ConcurrentHashMap<>();
     private final Random hiddenStateRandom = new Random();
+    private final double shieldEgoRangeMeters;
+    private final boolean randomizeHiddenTargetAndCooldown;
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds) {
+        this(engine, vehicles, predictFutureSeconds,
+                DEFAULT_SHIELD_EGO_RANGE_METERS,
+                DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN);
+    }
+
+    public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
+                          double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown) {
         this.engine = engine;
         this.dt = engine.dt;
         this.STEPS_PER_SECOND = engine.STEPS_PER_SECOND;
         this.predictFutureSeconds = predictFutureSeconds;
+        this.shieldEgoRangeMeters = shieldEgoRangeMeters;
+        this.randomizeHiddenTargetAndCooldown = randomizeHiddenTargetAndCooldown;
         this.vehicles = vehicles;
-        this.filteredVehicles = getVehiclesWithinEgoRangeIncludingEgo(200.0);
+        this.filteredVehicles = getVehiclesWithinEgoRangeIncludingEgo(shieldEgoRangeMeters);
         this.vehicles = this.filteredVehicles;
         this.observedAccelerationByVehicleId = getObservedAccelerationByVehicleId(this.vehicles);
 
-        //initialState = this.getInitialState(vehicles);
-        initialState = this.getInitialStateWithRandomHiddenState(this.vehicles);
+        initialState = randomizeHiddenTargetAndCooldown
+                ? this.getInitialStateWithRandomHiddenState(this.vehicles)
+                : this.getInitialState(this.vehicles);
         system = new ControlledSystem(getController(), (rg, ds) -> ds.apply(this.getEnvironmentUpdates(rg, ds)), initialState);
         sequence = new EvolutionSequence(new SilentMonitor("Vehicle"), new DefaultRandomGenerator(), rg -> system, EVOLUTION_SEQUENCE_SIZE);
         //printSummary();
@@ -429,6 +443,11 @@ public class StarkShieldApp {
         double frontGap = frontX - egoX - VEHICLE_LENGTH;
         double relativeSpeed = egoVx - frontVx;
         double closingSpeed = Math.max(0.0, relativeSpeed);
+        int egoLane = (int) state.get(egoOffset + VarTable.lane_index.ordinal());
+        int frontLane = (int) state.get(frontOffset + VarTable.lane_index.ordinal());
+        if (frontGap <= 0.0 && frontLane == egoLane) {
+            return 1.0;
+        }
         if (frontGap >= MIN_CLOSE_FRONT_GAP && closingSpeed == 0.0) {
             return 0.0;
         }
@@ -573,7 +592,8 @@ public class StarkShieldApp {
             Vehicle v = vehicles.get(i);
             int offSet = i * VarTable.values().length;
             values.put(offSet + VarTable.id.ordinal(),Double.valueOf(v.id));
-            values.put(offSet + VarTable.politeness.ordinal(), v.politeness);
+            //values.put(offSet + VarTable.politeness.ordinal(), v.politeness);
+            values.put(offSet + VarTable.politeness.ordinal(), 0.0);
             values.put(offSet + VarTable.cooldownTimer.ordinal(), v.cooldownTimer);
             values.put(offSet + VarTable.target_lane_index.ordinal(), (double)v.getTargetLaneIndex());
             values.put(offSet + VarTable.lane_index.ordinal(), (double)v.getLaneIndex());
@@ -613,7 +633,8 @@ public class StarkShieldApp {
             Vehicle v = vehicles.get(i);
             int offSet = i * VarTable.values().length;
             values.put(offSet + VarTable.id.ordinal(), Double.valueOf(v.id));
-            values.put(offSet + VarTable.politeness.ordinal(), v.politeness);
+            //values.put(offSet + VarTable.politeness.ordinal(), v.politeness);
+            values.put(offSet + VarTable.politeness.ordinal(), 0.0);
             values.put(offSet + VarTable.cooldownTimer.ordinal(), getRandomCooldownTimer(v));
             values.put(offSet + VarTable.target_lane_index.ordinal(), (double) v.getTargetLaneIndex());
             values.put(offSet + VarTable.lane_index.ordinal(), (double) v.getLaneIndex());

@@ -2,8 +2,11 @@ package Scenarios.Engine;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
@@ -27,10 +30,15 @@ public class HighwayEngine {
     private JButton predictedStateQueryButton;
     private final int SCALE = 15;
     private final int LANE_WIDTH = 4;
+    private int cameraDragOffsetX = 0;
+    private int cameraDragOffsetY = 0;
+    private Point lastCameraDragPoint;
     private static final double MIN_SPAWN_FRONT_GAP = 12.0;
     private static final double SPAWN_REACTION_TIME = 0.5;
     private static final double SPAWN_MAX_BRAKE = 5.0;
     private static final int SPAWN_ATTEMPT_MULTIPLIER = 200;
+    private static final double POLITENESS_MEAN = 0.5;
+    private static final double POLITENESS_STD = 1.0 / 6.0;
     public int numLanes = 3;
 
 
@@ -190,6 +198,10 @@ public class HighwayEngine {
         }
     }
     public void populateTraffic(int targetVehicles, int numLanes, double minX, double maxX) {
+        populateTraffic(targetVehicles, numLanes, minX, maxX, false);
+    }
+
+    public void populateTraffic(int targetVehicles, int numLanes, double minX, double maxX, boolean polite) {
         this.numLanes = numLanes;
         Random rand = new Random();
         int spawned = 0;
@@ -231,6 +243,9 @@ public class HighwayEngine {
             v.setTargetLaneIndex(lane);
 
             v.id = ""+spawned;
+            if (polite) {
+                v.politeness = clippedGaussian(rand, POLITENESS_MEAN, POLITENESS_STD, 0.0, 1.0);
+            }
             v.cooldownTimer = rand.nextDouble() * 1;
 
             double speed = 20.0 + rand.nextGaussian() * 3.0;
@@ -264,6 +279,11 @@ public class HighwayEngine {
         }
 
 
+    }
+
+    private double clippedGaussian(Random rand, double mean, double std, double min, double max) {
+        double value = mean + rand.nextGaussian() * std;
+        return Math.max(min, Math.min(max, value));
     }
 
     public void populateProtectedTraffic(int targetVehicles, int numLanes, double minX, double maxX) {
@@ -396,6 +416,7 @@ public class HighwayEngine {
         };
 
         renderPanel.setBackground(new Color(40, 40, 40));
+        setupCameraDrag();
         JToggleButton predictionPromptButton = new JToggleButton("Prediction query: OFF");
         predictionPromptButton.addActionListener(e -> {
             predictedStatePromptEnabled = predictionPromptButton.isSelected();
@@ -420,6 +441,47 @@ public class HighwayEngine {
         frame.setVisible(true);
     }
 
+    private void setupCameraDrag() {
+        MouseAdapter cameraDragHandler = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    lastCameraDragPoint = e.getPoint();
+                    renderPanel.setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+                }
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (lastCameraDragPoint == null) {
+                    return;
+                }
+                Point currentPoint = e.getPoint();
+                cameraDragOffsetX += currentPoint.x - lastCameraDragPoint.x;
+                cameraDragOffsetY += currentPoint.y - lastCameraDragPoint.y;
+                lastCameraDragPoint = currentPoint;
+                renderPanel.repaint();
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                lastCameraDragPoint = null;
+                renderPanel.setCursor(Cursor.getDefaultCursor());
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                    cameraDragOffsetX = 0;
+                    cameraDragOffsetY = 0;
+                    renderPanel.repaint();
+                }
+            }
+        };
+        renderPanel.addMouseListener(cameraDragHandler);
+        renderPanel.addMouseMotionListener(cameraDragHandler);
+    }
+
 
     private void drawHighway(Graphics2D g2d) {
 
@@ -431,7 +493,8 @@ public class HighwayEngine {
 
 
         double cameraX = vehicles.isEmpty() ? 0 : getCameraVehicle().x;
-        int offsetX = (int) (screenWidth / 2 - cameraX * SCALE); // 鎶婅溅鏀惧湪灞忓箷宸︿晶 1/3 澶?
+        int offsetX = (int) (screenWidth / 2 - cameraX * SCALE) + cameraDragOffsetX; // 鎶婅溅鏀惧湪灞忓箷宸︿晶 1/3 澶?
+        int offsetY = cameraDragOffsetY;
 
         g2d.setColor(Color.WHITE);
 
@@ -440,7 +503,7 @@ public class HighwayEngine {
 
         for (int i = 0; i < lineYPositions.length; i++) {
 
-            int yPixel = topMargin + (int)(lineYPositions[i] * SCALE);
+            int yPixel = topMargin + offsetY + (int)(lineYPositions[i] * SCALE);
 
             if (i == 0 || i == lineYPositions.length - 1) {
 
@@ -459,7 +522,7 @@ public class HighwayEngine {
         for (Vehicle v : vehicles) {
 
             int px = (int) (v.x * SCALE) + offsetX;
-            int py = (int) (v.y * SCALE) + topMargin;
+            int py = (int) (v.y * SCALE) + topMargin + offsetY;
 
             int carPixelLength = (int) (v.LENGTH * SCALE);
             int carPixelWidth = (int) (v.WIDTH * SCALE);
@@ -484,38 +547,40 @@ public class HighwayEngine {
 
             g2d.setColor(Color.BLACK);
             g2d.fillRect(carPixelLength / 4, -carPixelWidth / 2, 4, carPixelWidth);
+            String vehicleIdLabel = String.valueOf(v.id);
+            FontMetrics vehicleIdMetrics = g2d.getFontMetrics();
+            int vehicleIdTextWidth = vehicleIdMetrics.stringWidth(vehicleIdLabel);
+            int vehicleIdTextY = (vehicleIdMetrics.getAscent() - vehicleIdMetrics.getDescent()) / 2;
+            g2d.drawString(vehicleIdLabel, -vehicleIdTextWidth / 2, vehicleIdTextY);
 
             g2d.setTransform(oldTransform);
 
 
             g2d.setColor(Color.YELLOW);
-            //g2d.drawString(String.format("V:%.1f L:%d", v.speed, v.lane_index), px - 15, py - 20);
-            g2d.drawString(String.format("V:%.1f L:%d", v.speed, v.getLaneIndex()), px - 15, py - 20);
-
-            g2d.drawString(String.format("(vx:%.1f, vy:%.1f)", v.x, v.y), px - 15, py + 30);
-
-            g2d.drawString(String.format("A:%.2f", v.plannedAcceleration), px - 15, py + 50);
-
-            g2d.drawString(String.format("T:%.1f", v.targetSpeed), px - 15, py + 70);
-
-
-//            for (Integer lane : v.mobil.keySet()) {
-//                List<Double> mobilValues = v.mobil.get(lane);
-//                g2d.drawString(String.format("lane:%d: overall:%.2f,self:%.2f,karmanew%.2f", lane, mobilValues.get(0), mobilValues.get(1), mobilValues.get(3)), px - 15, py + 90 + lane * 20);
-//            }
-
-            //cooldowntimer
-            g2d.drawString(String.format("cool:%.1f", v.cooldownTimer), px - 15, py + 150);
-            //mobiling
-            g2d.drawString(String.format("mobiling:%b", v.mobiling), px - 15, py + 170);
-            //possiblelanes
-            for(int i =0; i<v.possible_lanes.length; i++) {
-                g2d.drawString(String.format("possible lane:%d", v.possible_lanes[i]), px - 15, py + 190 + i * 20);
+            g2d.drawString(String.format("v:%.1f", v.speed), px - 15, py - 20);
+            if (v.mobiling && !v.mobilDebug.isEmpty()) {
+                int line = 0;
+                List<Integer> mobilLanes = new ArrayList<>(v.mobilDebug.keySet());
+                Collections.sort(mobilLanes);
+                for (Integer mobilLane : mobilLanes) {
+                    Vehicle.MobilDebugInfo info = v.mobilDebug.get(mobilLane);
+                    g2d.drawString(String.format(
+                            "to L%d F:%s R:%s self:%.2f karma:%.2f",
+                            info.targetLane,
+                            info.targetFrontVehicleId,
+                            info.targetRearVehicleId,
+                            info.selfBenefit,
+                            info.karma
+                    ), px - 15, py + 20 + line * 32);
+                    g2d.drawString(String.format(
+                            "oldR:%s ben:%.2f total:%.2f",
+                            info.originalRearVehicleId,
+                            info.originalRearBenefit,
+                            info.overallBenefit
+                    ), px - 15, py + 36 + line * 32);
+                    line++;
+                }
             }
-
-            g2d.drawString(String.format("id:%s", v.id), px - 15, py);
-            //karma_a_new
-            //g2d.drawString(String.format("karma_a_new:%.2f", v.karma_a_new), px - 15, py + 250);
         }
     }
 
@@ -580,6 +645,16 @@ public class HighwayEngine {
         }
 
         return new StarkShieldApp(this, this.vehicles, futureSeconds);
+    }
+
+    public StarkShieldApp createStarkShieldApp(int futureSeconds, double shieldEgoRangeMeters,
+                                               boolean randomizeHiddenTargetAndCooldown) {
+        if(this.vehicles == null || this.vehicles.isEmpty()) {
+            throw new IllegalStateException("Engine must have vehicles to create StarkShieldApp");
+        }
+
+        return new StarkShieldApp(this, this.vehicles, futureSeconds,
+                shieldEgoRangeMeters, randomizeHiddenTargetAndCooldown);
     }
 
 

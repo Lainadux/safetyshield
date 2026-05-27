@@ -38,6 +38,13 @@ public final class StarkScenarioRunner {
         realWorld.enhancedCollisionCheckEnabled = true;
         return realWorld;
     }
+    public static HighwayEngine createRandomWorld(double dt, boolean polite) {
+        HighwayEngine realWorld = new HighwayEngine(dt, true);
+        //realWorld.populateTraffic(18, 3, 0.0, 200);
+        realWorld.populateTraffic(36, 3, 0.0, 400, polite);
+        realWorld.enhancedCollisionCheckEnabled = true;
+        return realWorld;
+    }
 
     public static HighwayEngine createWorldFromLog(String logFile, double dt) {
         List<Vehicle> vehicles = normalizeLoadedVehicles(StateSaver.loadState(logFile));
@@ -49,6 +56,10 @@ public final class StarkScenarioRunner {
     }
 
     public static void runShieldedScenario(HighwayEngine realWorld, RunOptions options) throws Exception {
+        runScenario(realWorld, options);
+    }
+
+    public static RunResult runScenario(HighwayEngine realWorld, RunOptions options) throws Exception {
         double dt = realWorld.dt;
         ProtectedControlledVehicle protectedControlledVehicle = ensureProtectedEgo(realWorld);
         List<Vehicle> initialScenario = deepCopyVehicles(realWorld.vehicles);
@@ -68,16 +79,32 @@ public final class StarkScenarioRunner {
                 }
 
                 if (realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0) {
-                    List<Vehicle> shieldVehicles = buildShieldVehicles(realWorld.vehicles);
-                    HighwayEngine shieldEngine = new HighwayEngine(dt, true, true, shieldVehicles);
-                    StarkShieldApp starkShieldApp = shieldEngine.createStarkShieldApp(3);
-                    boolean isSafe = starkShieldApp.verifySafe();
+                    StarkShieldApp starkShieldApp = null;
+                    boolean isSafe;
+                    if (options.decisionMode == DecisionMode.STARK_SHIELD) {
+                        List<Vehicle> shieldVehicles = buildShieldVehicles(realWorld.vehicles);
+                        HighwayEngine shieldEngine = new HighwayEngine(dt, true, true, shieldVehicles);
+                        starkShieldApp = shieldEngine.createStarkShieldApp(
+                                options.shieldPredictFutureSeconds,
+                                options.shieldEgoRangeMeters,
+                                options.randomizeShieldHiddenTargetAndCooldown);
+                        long verifyStartNanos = System.nanoTime();
+                        isSafe = starkShieldApp.verifySafe();
+                        long verifyElapsedNanos = System.nanoTime() - verifyStartNanos;
+                        if (options.verifyTimingStats != null) {
+                            options.verifyTimingStats.record(verifyElapsedNanos, !isSafe, protectedControlledVehicle.speed);
+                        }
+                    } else {
+                        isSafe = !options.shouldRejectByProbability(protectedControlledVehicle.speed);
+                    }
                     HighwayAiClient.AiDecision decision = protectedControlledVehicle.getLastAiDecision();
 
                     if (options.printDiagnostics) {
                         System.out.printf("%s AI decision: action=%d, action_name=%s%n",
                                 isSafe ? "Safe" : "Unsafe", decision.action, decision.action_name);
-                        System.out.println(starkShieldApp.getUnsafeDiagnosis());
+                        if (starkShieldApp != null) {
+                            System.out.println(starkShieldApp.getUnsafeDiagnosis());
+                        }
                     }
 
                     if (!isSafe) {
@@ -117,6 +144,7 @@ public final class StarkScenarioRunner {
                 System.out.println(v);
             }
         }
+        return new RunResult(crashed);
     }
 
     public static List<Vehicle> normalizeLoadedVehicles(List<Vehicle> loadedVehicles) {
@@ -241,6 +269,172 @@ public final class StarkScenarioRunner {
         public boolean rethrowOnCrash = true;
         public boolean printDiagnostics = true;
         public int timeForSimulationSeconds = DEFAULT_TIME_FOR_SIMULATION_SECONDS;
+        public int shieldPredictFutureSeconds = 3;
+        public double shieldEgoRangeMeters = StarkShieldApp.DEFAULT_SHIELD_EGO_RANGE_METERS;
+        public boolean randomizeShieldHiddenTargetAndCooldown = StarkShieldApp.DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN;
+        public VerifyTimingStats verifyTimingStats = null;
+        public DecisionMode decisionMode = DecisionMode.STARK_SHIELD;
+        public double pureRejectProbability = 0.0;
+        public SpeedRejectProbabilityModel speedRejectProbabilityModel = null;
         public String logDir = DEFAULT_LOG_DIR;
+
+        private boolean shouldRejectByProbability(double egoSpeed) {
+            double probability = decisionMode == DecisionMode.SPEED_CONDITIONAL_PROBABILITY
+                    && speedRejectProbabilityModel != null
+                    ? speedRejectProbabilityModel.probabilityForSpeed(egoSpeed)
+                    : pureRejectProbability;
+            probability = Math.max(0.0, Math.min(1.0, probability));
+            return java.util.concurrent.ThreadLocalRandom.current().nextDouble() < probability;
+        }
+    }
+
+    public enum DecisionMode {
+        STARK_SHIELD,
+        PURE_PROBABILITY,
+        SPEED_CONDITIONAL_PROBABILITY
+    }
+
+    public static class RunResult {
+        public final boolean crashed;
+
+        private RunResult(boolean crashed) {
+            this.crashed = crashed;
+        }
+    }
+
+    public interface SpeedRejectProbabilityModel {
+        double probabilityForSpeed(double egoSpeed);
+    }
+
+    public static class VerifyTimingStats {
+        private static final double SPEED_BUCKET_WIDTH = 5.0;
+        private long count = 0;
+        private long rejectedCount = 0;
+        private double meanNanos = 0.0;
+        private double m2Nanos = 0.0;
+        private long minNanos = Long.MAX_VALUE;
+        private long maxNanos = Long.MIN_VALUE;
+        private final java.util.Map<Integer, SpeedRejectBucket> speedRejectBuckets = new java.util.TreeMap<>();
+
+        public synchronized void record(long elapsedNanos) {
+            record(elapsedNanos, false, Double.NaN);
+        }
+
+        public synchronized void record(long elapsedNanos, boolean rejected, double egoSpeed) {
+            count++;
+            if (rejected) {
+                rejectedCount++;
+            }
+            double delta = elapsedNanos - meanNanos;
+            meanNanos += delta / count;
+            double delta2 = elapsedNanos - meanNanos;
+            m2Nanos += delta * delta2;
+            minNanos = Math.min(minNanos, elapsedNanos);
+            maxNanos = Math.max(maxNanos, elapsedNanos);
+            if (!Double.isNaN(egoSpeed) && !Double.isInfinite(egoSpeed)) {
+                int bucketIndex = (int) Math.floor(egoSpeed / SPEED_BUCKET_WIDTH);
+                speedRejectBuckets
+                        .computeIfAbsent(bucketIndex, SpeedRejectBucket::new)
+                        .record(rejected);
+            }
+        }
+
+        public synchronized Snapshot snapshot() {
+            double varianceNanos = count > 1 ? m2Nanos / (count - 1) : 0.0;
+            List<SpeedRejectBucketSnapshot> bucketSnapshots = new ArrayList<>();
+            for (SpeedRejectBucket bucket : speedRejectBuckets.values()) {
+                bucketSnapshots.add(bucket.snapshot());
+            }
+            return new Snapshot(count, meanNanos, varianceNanos,
+                    count == 0 ? 0 : minNanos,
+                    count == 0 ? 0 : maxNanos,
+                    rejectedCount,
+                    bucketSnapshots);
+        }
+
+        public static class Snapshot {
+            public final long count;
+            public final double meanNanos;
+            public final double varianceNanos;
+            public final long minNanos;
+            public final long maxNanos;
+            public final long rejectedCount;
+            public final List<SpeedRejectBucketSnapshot> speedRejectBuckets;
+
+            private Snapshot(long count, double meanNanos, double varianceNanos, long minNanos, long maxNanos,
+                             long rejectedCount, List<SpeedRejectBucketSnapshot> speedRejectBuckets) {
+                this.count = count;
+                this.meanNanos = meanNanos;
+                this.varianceNanos = varianceNanos;
+                this.minNanos = minNanos;
+                this.maxNanos = maxNanos;
+                this.rejectedCount = rejectedCount;
+                this.speedRejectBuckets = speedRejectBuckets;
+            }
+
+            public double meanMillis() {
+                return meanNanos / 1_000_000.0;
+            }
+
+            public double varianceMillisSquared() {
+                return varianceNanos / 1_000_000_000_000.0;
+            }
+
+            public double stdMillis() {
+                return Math.sqrt(varianceNanos) / 1_000_000.0;
+            }
+
+            public double minMillis() {
+                return minNanos / 1_000_000.0;
+            }
+
+            public double maxMillis() {
+                return maxNanos / 1_000_000.0;
+            }
+
+            public double rejectProbability() {
+                return count == 0 ? 0.0 : (double) rejectedCount / count;
+            }
+        }
+
+        public static class SpeedRejectBucketSnapshot {
+            public final double minSpeed;
+            public final double maxSpeed;
+            public final long count;
+            public final long rejectedCount;
+
+            private SpeedRejectBucketSnapshot(double minSpeed, double maxSpeed, long count, long rejectedCount) {
+                this.minSpeed = minSpeed;
+                this.maxSpeed = maxSpeed;
+                this.count = count;
+                this.rejectedCount = rejectedCount;
+            }
+
+            public double rejectProbability() {
+                return count == 0 ? 0.0 : (double) rejectedCount / count;
+            }
+        }
+
+        private static class SpeedRejectBucket {
+            private final int bucketIndex;
+            private long count = 0;
+            private long rejectedCount = 0;
+
+            private SpeedRejectBucket(int bucketIndex) {
+                this.bucketIndex = bucketIndex;
+            }
+
+            private void record(boolean rejected) {
+                count++;
+                if (rejected) {
+                    rejectedCount++;
+                }
+            }
+
+            private SpeedRejectBucketSnapshot snapshot() {
+                double minSpeed = bucketIndex * SPEED_BUCKET_WIDTH;
+                return new SpeedRejectBucketSnapshot(minSpeed, minSpeed + SPEED_BUCKET_WIDTH, count, rejectedCount);
+            }
+        }
     }
 }

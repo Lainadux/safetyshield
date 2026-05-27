@@ -35,6 +35,7 @@ public class Vehicle {
     public int[] possible_lanes = new int[]{0, 1, 2}; // for debugging
     public double karma_a_new = 0.0; // for debugging
     public Map<Integer, List<Double>> mobil = new HashMap<>(); // for debugging
+    public Map<Integer, MobilDebugInfo> mobilDebug = new HashMap<>(); // for rendering/debugging
     public String id ="default";
     public double politeness = 0.0;
     private transient HighwayEngine engine;
@@ -91,6 +92,35 @@ public class Vehicle {
     public final double WIDTH = 2.0;
     public Vehicle(){
 
+    }
+
+    public static class MobilDebugInfo {
+        public final int targetLane;
+        public final String targetFrontVehicleId;
+        public final String targetRearVehicleId;
+        public final String originalRearVehicleId;
+        public final double overallBenefit;
+        public final double selfBenefit;
+        public final double karma;
+        public final double originalRearBenefit;
+
+        public MobilDebugInfo(int targetLane,
+                              String targetFrontVehicleId,
+                              String targetRearVehicleId,
+                              String originalRearVehicleId,
+                              double overallBenefit,
+                              double selfBenefit,
+                              double karma,
+                              double originalRearBenefit) {
+            this.targetLane = targetLane;
+            this.targetFrontVehicleId = targetFrontVehicleId;
+            this.targetRearVehicleId = targetRearVehicleId;
+            this.originalRearVehicleId = originalRearVehicleId;
+            this.overallBenefit = overallBenefit;
+            this.selfBenefit = selfBenefit;
+            this.karma = karma;
+            this.originalRearBenefit = originalRearBenefit;
+        }
     }
 
     /**

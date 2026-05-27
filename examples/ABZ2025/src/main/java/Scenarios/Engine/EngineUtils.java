@@ -136,8 +136,11 @@ public class EngineUtils {
         return clip(KP_A * (target - current));
     }
     public static double computeAccel(Vehicle vehicle, List<Vehicle> environments, int LaneNo) throws Exception {
+        return clip(computeRawAccel(vehicle, environments, LaneNo));
+    }
+    public static double computeRawAccel(Vehicle vehicle, List<Vehicle> environments, int LaneNo) throws Exception {
         if (vehicle instanceof ControlledVehicle) {
-            return p_controller(vehicle.targetSpeed, vehicle.speed);
+            return KP_A * (vehicle.targetSpeed - vehicle.speed);
         }
         else {
             double v = vehicle.vx;
@@ -156,14 +159,17 @@ public class EngineUtils {
                 sStar = Math.max(sStar, DISTANCE_WANTED);
                 double interactionTerm = Math.pow(sStar / s, 2);
                 double acceleration = COMFORT_ACC_MAX * (freeFlowTerm - interactionTerm);
-                return clip(acceleration);
+                return acceleration;
             }
 
         }
     }
     public static double computeAccel(Vehicle vehicle, Vehicle frontVehicle) throws Exception {
+        return clip(computeRawAccel(vehicle, frontVehicle));
+    }
+    public static double computeRawAccel(Vehicle vehicle, Vehicle frontVehicle) throws Exception {
         if (vehicle instanceof ControlledVehicle) {
-            return p_controller(vehicle.targetSpeed, vehicle.speed);
+            return KP_A * (vehicle.targetSpeed - vehicle.speed);
         }
         double v = vehicle.vx;
         double v0 = vehicle.targetSpeed;
@@ -180,7 +186,7 @@ public class EngineUtils {
             sStar = Math.max(sStar, DISTANCE_WANTED);
             double interactionTerm = Math.pow(sStar / s, 2);
             double acceleration = COMFORT_ACC_MAX * (freeFlowTerm - interactionTerm);
-            return clip(acceleration);
+            return acceleration;
         }
     }
 
@@ -247,6 +253,7 @@ public class EngineUtils {
                     //System.out.println("Vehicle " + vehicle.id + " at lane " + vehicle.getLaneIndex() + " with speed " + vehicle.speed);
                 }
                 Map<Integer, List<Double>> mobilmap = new HashMap<>();
+                Map<Integer, Vehicle.MobilDebugInfo> mobilDebugMap = new HashMap<>();
                 vehicle.mobiling = true;
                 List<Integer>newLane = new ArrayList<>();
                 for(int lane: engine.computePossibleLanes(vehicle)){
@@ -254,26 +261,27 @@ public class EngineUtils {
 //                    if(lane != vehicle.lane_index){
                     if(lane != vehicle.getLaneIndex()){
                         //double current_a = computeAccel(vehicle, environments, vehicle.lane_index);
-                        double current_a = computeAccel(vehicle, environments, vehicle.getLaneIndex());
-                        double new_a = computeAccel(vehicle, environments, lane);
+                        double current_a = computeRawAccel(vehicle, environments, vehicle.getLaneIndex());
+                        double new_a = computeRawAccel(vehicle, environments, lane);
                         double benefit_a_old = 0;
                         double benefit_a_new = 0;
 //                        Vehicle benifitCarBehind =  getRearVehicle(vehicle, environments, vehicle.lane_index);
                         Vehicle benifitCarBehind =  getRearVehicle(vehicle, environments, vehicle.getLaneIndex());
                         if(benifitCarBehind != null){
-                            benefit_a_old = computeAccel(benifitCarBehind, vehicle);
+                            benefit_a_old = computeRawAccel(benifitCarBehind, vehicle);
                             //benefit_a_new = computeAccel(benifitCarBehind, getFrontVehicle(vehicle, environments, vehicle.lane_index));
-                            benefit_a_new = computeAccel(benifitCarBehind, getFrontVehicle(vehicle, environments, vehicle.getLaneIndex()));
+                            benefit_a_new = computeRawAccel(benifitCarBehind, getFrontVehicle(vehicle, environments, vehicle.getLaneIndex()));
                         }
                         double benefit = benefit_a_new - benefit_a_old;
 
                         double karma_a_old = 0;
                         double karma_a_new = 0;
 
+                        Vehicle targetFrontVehicle = getFrontVehicle(vehicle, environments, lane);
                         Vehicle karma_car_behind = getRearVehicle(vehicle, environments, lane);
                         if(karma_car_behind != null){
-                            karma_a_old = computeAccel(karma_car_behind, getFrontVehicle(karma_car_behind, environments, lane));
-                            karma_a_new = computeAccel(karma_car_behind, vehicle);
+                            karma_a_old = computeRawAccel(karma_car_behind, getFrontVehicle(karma_car_behind, environments, lane));
+                            karma_a_new = computeRawAccel(karma_car_behind, vehicle);
 
                             //System.out.println("karma_old: " + karma_a_old + ", karma_new: " + karma_a_new);
                         }
@@ -303,11 +311,22 @@ public class EngineUtils {
 
 
                         mobilmap.put(lane, List.of(overall_benefit, new_a - current_a, benefit, karma_a_new));
+                        mobilDebugMap.put(lane, new Vehicle.MobilDebugInfo(
+                                lane,
+                                vehicleIdOrNone(targetFrontVehicle),
+                                vehicleIdOrNone(karma_car_behind),
+                                vehicleIdOrNone(benifitCarBehind),
+                                overall_benefit,
+                                new_a - current_a,
+                                karma,
+                                benefit
+                        ));
                     }
 
                 }
 
                 vehicle.mobil = mobilmap;
+                vehicle.mobilDebug = mobilDebugMap;
                 vehicle.possible_lanes = newLane.stream().mapToInt(i -> i).toArray();
 
 
@@ -338,6 +357,10 @@ public class EngineUtils {
         return newKarma > -LANE_CHANGE_MAX_BRAKING_IMPOSED;
 
 
+    }
+
+    private static String vehicleIdOrNone(Vehicle vehicle) {
+        return vehicle == null ? "none" : vehicle.id;
     }
 
     private static boolean canRearEgoBrakeComfortablyAvoidCollision(Vehicle frontVehicle, Vehicle egoRearVehicle,
