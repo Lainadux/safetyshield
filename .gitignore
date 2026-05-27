@@ -31,3 +31,7 @@ build
 *.csv
 
 .idea
+
+# Generated ABZ2025 scenario logs
+examples/ABZ2025/src/main/java/Scenarios/logs*/
+saved_initial_states/

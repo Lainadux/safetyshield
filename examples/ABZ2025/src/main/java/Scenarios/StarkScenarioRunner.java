@@ -18,11 +18,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.swing.JOptionPane;
 
 public final class StarkScenarioRunner {
     public static final double DEFAULT_DT = 0.02;
     public static final int DEFAULT_TIME_FOR_SIMULATION_SECONDS = 40;
-    public static final String DEFAULT_LOG_DIR = "examples/ABZ2025/src/main/java/Scenarios/logs";
+    public static final String DEFAULT_LOG_DIR = "examples/ABZ2025/src/main/java/Scenarios/logs3";
 
     private static final DateTimeFormatter STATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS");
     private static final AtomicInteger SAVED_STATE_SEQUENCE = new AtomicInteger(0);
@@ -32,7 +33,8 @@ public final class StarkScenarioRunner {
 
     public static HighwayEngine createRandomWorld(double dt) {
         HighwayEngine realWorld = new HighwayEngine(dt, true);
-        realWorld.populateTraffic(18, 3, 0.0, 200);
+        //realWorld.populateTraffic(18, 3, 0.0, 200);
+        realWorld.populateTraffic(36, 3, 0.0, 400);
         realWorld.enhancedCollisionCheckEnabled = true;
         return realWorld;
     }
@@ -84,7 +86,7 @@ public final class StarkScenarioRunner {
                     }
 
                     if (options.pauseAfterShieldDecision) {
-                        waitForSpaceToContinue(realWorld);
+                        waitForSpaceToContinue(realWorld, starkShieldApp, options);
                     }
                 }
 
@@ -191,8 +193,13 @@ public final class StarkScenarioRunner {
         StateSaver.saveState(initialScenario, logDir + File.separator + prefix + timestamp + "_" + sequence + ".json");
     }
 
-    private static void waitForSpaceToContinue(HighwayEngine engine) throws InterruptedException {
+    private static void waitForSpaceToContinue(HighwayEngine engine, StarkShieldApp starkShieldApp, RunOptions options) throws InterruptedException {
         engine.render();
+        engine.setPredictedStateQueryAction(() -> promptPredictedVehicleState(starkShieldApp));
+
+        if (options.promptPredictedStateOnPause && engine.isPredictedStatePromptEnabled()) {
+            promptPredictedVehicleState(starkShieldApp);
+        }
 
         CountDownLatch spacePressed = new CountDownLatch(1);
         KeyEventDispatcher dispatcher = event -> {
@@ -208,12 +215,27 @@ public final class StarkScenarioRunner {
         try {
             spacePressed.await();
         } finally {
+            engine.setPredictedStateQueryAction(null);
             focusManager.removeKeyEventDispatcher(dispatcher);
         }
     }
 
+    private static void promptPredictedVehicleState(StarkShieldApp starkShieldApp) {
+        String vehicleId = JOptionPane.showInputDialog(
+                null,
+                "Vehicle id to print predicted final state (Cancel or empty to skip):",
+                "StarkShield prediction",
+                JOptionPane.QUESTION_MESSAGE
+        );
+        if (vehicleId == null || vehicleId.isBlank()) {
+            return;
+        }
+        System.out.println(starkShieldApp.getPredictedFinalVehicleState(vehicleId));
+    }
+
     public static class RunOptions {
         public boolean pauseAfterShieldDecision = false;
+        public boolean promptPredictedStateOnPause = false;
         public boolean saveInitialState = true;
         public boolean renderEachStep = true;
         public boolean rethrowOnCrash = true;

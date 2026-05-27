@@ -59,6 +59,8 @@ public class EngineUtils {
     private static final double MAX_BRAKE = -5;
     private static final double MIN_BRAKE = -3;
     private static final double MAX_ACCELERATION = 5;
+    private static final double EGO_COMFORT_BRAKE_FOR_LANE_CHANGE = 2.0;
+    private static final double EGO_REAR_BRAKING_GAP_BUFFER = 2.0;
 
 
     /**
@@ -294,7 +296,7 @@ public class EngineUtils {
                         double overall_benefit = (new_a - current_a) + vehicle.politeness * (benefit + karma);
 
 
-                        if(overall_benefit > LANE_CHANGE_MIN_ACC_GAIN && isSafeConsideringRearVehicle(vehicle, karma_car_behind, karma_a_new)){
+                        if(overall_benefit > LANE_CHANGE_MIN_ACC_GAIN && isSafeConsideringRearVehicle(vehicle, karma_car_behind, karma_a_new, new_a)){
                             newLane.add(lane);
                         }
 
@@ -325,21 +327,49 @@ public class EngineUtils {
 
 
     }
-    public static boolean isSafeConsideringRearVehicle(Vehicle vehicle, Vehicle rearVehicle, double newKarma) {
+    public static boolean isSafeConsideringRearVehicle(Vehicle vehicle, Vehicle rearVehicle, double newKarma, double laneChangingVehicleAcceleration) {
         if(rearVehicle == null){
             return true;
         }
 
         if(rearVehicle instanceof ControlledVehicle){
-            //
-            double TTC = (vehicle.x - rearVehicle.x - rearVehicle.LENGTH) / Math.max(1e-5, rearVehicle.vx - vehicle.vx);
-            //System.out.println("Time to collision with rear vehicle: " + TTC);
-            return TTC > 1.0;
+            return canRearEgoBrakeComfortablyAvoidCollision(vehicle, rearVehicle, laneChangingVehicleAcceleration);
         }
         return newKarma > -LANE_CHANGE_MAX_BRAKING_IMPOSED;
 
 
     }
+
+    private static boolean canRearEgoBrakeComfortablyAvoidCollision(Vehicle frontVehicle, Vehicle egoRearVehicle,
+                                                                    double frontVehicleAcceleration) {
+        double bumperGap = frontVehicle.x - egoRearVehicle.x - egoRearVehicle.LENGTH;
+        if (bumperGap <= EGO_REAR_BRAKING_GAP_BUFFER) {
+            return false;
+        }
+
+        double egoSpeed = longitudinalSpeed(egoRearVehicle);
+        double frontSpeed = longitudinalSpeed(frontVehicle);
+        double relativeSpeed = egoSpeed - frontSpeed;
+        double relativeAcceleration = -EGO_COMFORT_BRAKE_FOR_LANE_CHANGE - frontVehicleAcceleration;
+        if (relativeSpeed <= 0.0 && relativeAcceleration <= 0.0) {
+            return true;
+        }
+
+        double closingDistanceDuringBrake;
+        if (relativeAcceleration < 0.0) {
+            double timeUntilNoClosing = Math.max(0.0, -relativeSpeed / relativeAcceleration);
+            closingDistanceDuringBrake = relativeSpeed * timeUntilNoClosing
+                    + 0.5 * relativeAcceleration * timeUntilNoClosing * timeUntilNoClosing;
+        } else {
+            closingDistanceDuringBrake = Double.POSITIVE_INFINITY;
+        }
+        return bumperGap - EGO_REAR_BRAKING_GAP_BUFFER >= closingDistanceDuringBrake;
+    }
+
+    private static double longitudinalSpeed(Vehicle vehicle) {
+        return vehicle.vx != 0.0 ? vehicle.vx : vehicle.speed;
+    }
+
     public static double computeSteering(Vehicle v) {
 
        // double targetY = v.target_lane_index * LANE_WIDTH;

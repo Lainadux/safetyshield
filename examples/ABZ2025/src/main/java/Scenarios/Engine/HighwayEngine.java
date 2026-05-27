@@ -15,6 +15,8 @@ public class HighwayEngine {
     public List<Vehicle> initialVehiclesStates = new ArrayList<>();
     public boolean enhancedCollisionCheckEnabled =false;
     public List<Vehicle> vehicles = new ArrayList<>();
+    private volatile boolean predictedStatePromptEnabled = false;
+    private volatile Runnable predictedStateQueryAction;
     public double dt;
     public boolean hasEgo = false;
     public double runTime = 0.0;
@@ -22,8 +24,13 @@ public class HighwayEngine {
     public  int STEPS_PER_SECOND;
     private JFrame frame;
     private JPanel renderPanel;
+    private JButton predictedStateQueryButton;
     private final int SCALE = 15;
     private final int LANE_WIDTH = 4;
+    private static final double MIN_SPAWN_FRONT_GAP = 12.0;
+    private static final double SPAWN_REACTION_TIME = 0.5;
+    private static final double SPAWN_MAX_BRAKE = 5.0;
+    private static final int SPAWN_ATTEMPT_MULTIPLIER = 200;
     public int numLanes = 3;
 
 
@@ -88,6 +95,17 @@ public class HighwayEngine {
 
     public void addVehicle(Vehicle v) {
         this.vehicles.add(v);
+    }
+
+    public boolean isPredictedStatePromptEnabled() {
+        return predictedStatePromptEnabled;
+    }
+
+    public void setPredictedStateQueryAction(Runnable action) {
+        this.predictedStateQueryAction = action;
+        if (predictedStateQueryButton != null) {
+            SwingUtilities.invokeLater(() -> predictedStateQueryButton.setEnabled(action != null));
+        }
     }
 
 
@@ -176,11 +194,9 @@ public class HighwayEngine {
         Random rand = new Random();
         int spawned = 0;
         int attempts = 0;
-        int MAX_ATTEMPTS = targetVehicles * 20;
-
+        int MAX_ATTEMPTS = targetVehicles * SPAWN_ATTEMPT_MULTIPLIER;
 
         final double LANE_WIDTH = 4.0;
-        final double SAFE_SPAWN_DISTANCE = 15.0;
 
 
 
@@ -191,22 +207,6 @@ public class HighwayEngine {
             int lane = rand.nextInt(numLanes);
             double yCenter = lane * LANE_WIDTH;
 
-
-            double x = minX + (maxX - minX) * rand.nextDouble();
-
-            boolean collision = false;
-            for (Vehicle existing : this.vehicles) {
-//                if (existing.lane_index == lane) {
-                if(existing.getLaneIndex() == lane) {
-                    if (Math.abs(existing.x - x) < SAFE_SPAWN_DISTANCE) {
-                        collision = true;
-                        break;
-                    }
-                }
-            }
-
-
-            if (collision) continue;
 
             Vehicle v;
             if (hasEgo && spawned == 0) {
@@ -220,7 +220,7 @@ public class HighwayEngine {
             }
 
 
-            v.x = x;
+            v.x = minX + (maxX - minX) * rand.nextDouble();
             if(v.role.equals("EGO")){
                 v.x = 0;
             }
@@ -245,8 +245,14 @@ public class HighwayEngine {
                 v.speed = 25;
             }
 
+            v.vx = v.speed;
+            v.vy = 0.0;
 
             v.targetSpeed = v.speed + rand.nextDouble() * 5.0;
+
+            if (!isSpawnDynamicallySafe(v)) {
+                continue;
+            }
 
             this.addVehicle(v);
             v.injectEngine(this);
@@ -265,11 +271,9 @@ public class HighwayEngine {
         Random rand = new Random();
         int spawned = 0;
         int attempts = 0;
-        int MAX_ATTEMPTS = targetVehicles * 20;
-
+        int MAX_ATTEMPTS = targetVehicles * SPAWN_ATTEMPT_MULTIPLIER;
 
         final double LANE_WIDTH = 4.0;
-        final double SAFE_SPAWN_DISTANCE = 15.0;
 
 
 
@@ -279,23 +283,6 @@ public class HighwayEngine {
 
             int lane = rand.nextInt(numLanes);
             double yCenter = lane * LANE_WIDTH;
-
-
-            double x = minX + (maxX - minX) * rand.nextDouble();
-
-            boolean collision = false;
-            for (Vehicle existing : this.vehicles) {
-//                if (existing.lane_index == lane) {
-                if(existing.getLaneIndex() == lane) {
-                    if (Math.abs(existing.x - x) < SAFE_SPAWN_DISTANCE) {
-                        collision = true;
-                        break;
-                    }
-                }
-            }
-
-
-            if (collision) continue;
 
             Vehicle v;
             if (hasEgo && spawned == 0) {
@@ -309,7 +296,7 @@ public class HighwayEngine {
             }
 
 
-            v.x = x;
+            v.x = minX + (maxX - minX) * rand.nextDouble();
             v.y = yCenter;
             // v.lane_index = lane;
             //v.target_lane_index = lane;
@@ -331,8 +318,14 @@ public class HighwayEngine {
                 v.speed = 25;
             }
 
+            v.vx = v.speed;
+            v.vy = 0.0;
 
             v.targetSpeed = v.speed + rand.nextDouble() * 5.0;
+
+            if (!isSpawnDynamicallySafe(v)) {
+                continue;
+            }
 
             this.addVehicle(v);
             v.injectEngine(this);
@@ -344,6 +337,30 @@ public class HighwayEngine {
         }
 
 
+    }
+
+    private boolean isSpawnDynamicallySafe(Vehicle candidate) {
+        for (Vehicle existing : this.vehicles) {
+            if (existing.getLaneIndex() != candidate.getLaneIndex()) {
+                continue;
+            }
+
+            Vehicle rear = candidate.x < existing.x ? candidate : existing;
+            Vehicle front = candidate.x < existing.x ? existing : candidate;
+            double bumperGap = front.x - rear.x - rear.LENGTH;
+            if (bumperGap < requiredInitialBumperGap(rear, front)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private double requiredInitialBumperGap(Vehicle rear, Vehicle front) {
+        double rearSpeed = Math.max(0.0, rear.speed);
+        double frontSpeed = Math.max(0.0, front.speed);
+        double reactionDistance = rearSpeed * SPAWN_REACTION_TIME;
+        double brakingDifference = (rearSpeed * rearSpeed - frontSpeed * frontSpeed) / (2.0 * SPAWN_MAX_BRAKE);
+        return MIN_SPAWN_FRONT_GAP + reactionDistance + Math.max(0.0, brakingDifference);
     }
 
     public void render() {
@@ -368,6 +385,7 @@ public class HighwayEngine {
         frame = new JFrame("STARK Highway Simulator");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(1200, 400);
+        frame.setLayout(new BorderLayout());
 
         renderPanel = new JPanel() {
             @Override
@@ -378,7 +396,27 @@ public class HighwayEngine {
         };
 
         renderPanel.setBackground(new Color(40, 40, 40));
-        frame.add(renderPanel);
+        JToggleButton predictionPromptButton = new JToggleButton("Prediction query: OFF");
+        predictionPromptButton.addActionListener(e -> {
+            predictedStatePromptEnabled = predictionPromptButton.isSelected();
+            predictionPromptButton.setText(predictedStatePromptEnabled
+                    ? "Prediction query: ON"
+                    : "Prediction query: OFF");
+        });
+        predictedStateQueryButton = new JButton("Query vehicle");
+        predictedStateQueryButton.setEnabled(false);
+        predictedStateQueryButton.addActionListener(e -> {
+            Runnable action = predictedStateQueryAction;
+            if (action != null) {
+                action.run();
+            }
+        });
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        toolbar.add(predictionPromptButton);
+        toolbar.add(predictedStateQueryButton);
+
+        frame.add(toolbar, BorderLayout.NORTH);
+        frame.add(renderPanel, BorderLayout.CENTER);
         frame.setVisible(true);
     }
 

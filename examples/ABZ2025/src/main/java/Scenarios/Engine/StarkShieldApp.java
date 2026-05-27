@@ -37,6 +37,7 @@ import it.unicam.quasylab.jspear.distl.DoubleSemanticsVisitor;
 import it.unicam.quasylab.jspear.distl.TargetDisTLFormula;
 import org.apache.commons.math3.random.RandomGenerator;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -52,7 +53,9 @@ public class StarkShieldApp {
     private static final double MIN_ACCEPTABLE_ROBUSTNESS = 0.0;
     private static final double VEHICLE_LENGTH = 5.0;
     private static final double MIN_STABLE_FRONT_GAP = 15.0;
+    private static final double MIN_CLOSE_FRONT_GAP = 10.0;
     private static final double MAX_STABLE_RELATIVE_SPEED = 2.0;
+    private static final double SAFE_RECEDING_RELATIVE_SPEED = 2.0;
     private static final double FIRST_SECOND_SAFETY_DISTANCE_THRESHOLD = 0.1;
     private static final double FIRST_SECOND_LOOKAHEAD_TIME = 1.0;
     private static final double FIRST_SECOND_MIN_FRONT_GAP = 2.0;
@@ -86,7 +89,7 @@ public class StarkShieldApp {
         this.STEPS_PER_SECOND = engine.STEPS_PER_SECOND;
         this.predictFutureSeconds = predictFutureSeconds;
         this.vehicles = vehicles;
-        this.filteredVehicles = getVehiclesWithinEgoRangeIncludingEgo(100.0);
+        this.filteredVehicles = getVehiclesWithinEgoRangeIncludingEgo(200.0);
         this.vehicles = this.filteredVehicles;
         this.observedAccelerationByVehicleId = getObservedAccelerationByVehicleId(this.vehicles);
 
@@ -156,6 +159,32 @@ public class StarkShieldApp {
                 .orElse("No prediction state available for unsafe diagnosis.");
     }
 
+    public String getPredictedFinalVehicleState(String requestedVehicleId) {
+        if (requestedVehicleId == null || requestedVehicleId.isBlank()) {
+            return "No vehicle id was provided.";
+        }
+
+        int lastStep = this.predictFutureSeconds * STEPS_PER_SECOND - 1;
+        SampleSet<SystemState> finalStates = sequence.get(lastStep);
+        if (finalStates == null || finalStates.size() == 0) {
+            return "No prediction final state is available.";
+        }
+
+        SystemState firstSample = finalStates.stream().findFirst().orElse(null);
+        if (firstSample == null) {
+            return "No prediction final state is available.";
+        }
+
+        DataState state = firstSample.getDataState();
+        String vehicleId = requestedVehicleId.trim();
+        for (int i = 0; i < vehicles.size(); i++) {
+            if (vehicleId.equals(vehicleId(state, i))) {
+                return formatPredictedVehicleState(state, i, lastStep, finalStates.size());
+            }
+        }
+        return String.format("Vehicle id=%s was not found in predicted final state at step %d.", vehicleId, lastStep);
+    }
+
     private String diagnoseState(DataState state, int lastStep) {
         int egoIndex = getEgoVehicleIndex(state);
         StringBuilder diagnosis = new StringBuilder();
@@ -200,6 +229,29 @@ public class StarkShieldApp {
         return diagnosis.toString();
     }
 
+    private String formatPredictedVehicleState(DataState state, int vehicleIndex, int predictionStep, int sampleCount) {
+        int offset = vehicleOffset(vehicleIndex);
+        return String.format(
+                "Predicted final vehicle state: id=%s vehicleIndex=%d predictionStep=%d sample=first/%d role=%s lane=%d targetLane=%d x=%.2f y=%.2f vx=%.2f vy=%.2f speed=%.2f targetSpeed=%.2f heading=%.3f plannedAcceleration=%.2f plannedSteering=%.3f",
+                vehicleId(state, vehicleIndex),
+                vehicleIndex,
+                predictionStep,
+                sampleCount,
+                state.get(offset + VarTable.role.ordinal()) == 0.0 ? "EGO" : "NPC",
+                (int) state.get(offset + VarTable.lane_index.ordinal()),
+                (int) state.get(offset + VarTable.target_lane_index.ordinal()),
+                state.get(offset + VarTable.x.ordinal()),
+                state.get(offset + VarTable.y.ordinal()),
+                state.get(offset + VarTable.vx.ordinal()),
+                state.get(offset + VarTable.vy.ordinal()),
+                state.get(offset + VarTable.speed.ordinal()),
+                state.get(offset + VarTable.targetSpeed.ordinal()),
+                state.get(offset + VarTable.heading.ordinal()),
+                state.get(offset + VarTable.plannedAcceleration.ordinal()),
+                state.get(offset + VarTable.plannedSteering.ordinal())
+        );
+    }
+
     private String rawPenaltySummary() {
         if (dss == null || dss.size() == 0) {
             return "";
@@ -234,20 +286,31 @@ public class StarkShieldApp {
             return state;
         }
 
-        int frontIndex = getNearestFrontVehicleIndexAcrossAdjacentLanes(state, egoIndex);
-        if (frontIndex < 0) {
+        List<Integer> adjacentVehicles = getVehiclesInAdjacentLanes(state, egoIndex);
+        if (adjacentVehicles.isEmpty()) {
             return state;
         }
+
         int egoOffset = vehicleOffset(egoIndex);
-        int frontOffset = vehicleOffset(frontIndex);
-        double frontX = state.get(frontOffset + VarTable.x.ordinal());
-        double frontVx = state.get(frontOffset + VarTable.vx.ordinal());
-        double frontSpeed = state.get(frontOffset + VarTable.speed.ordinal());
+        double targetX = Double.POSITIVE_INFINITY;
+        double targetVx = Double.POSITIVE_INFINITY;
+        double targetSpeed = Double.POSITIVE_INFINITY;
+
+        for (int vehicleIndex : adjacentVehicles) {
+            int offset = vehicleOffset(vehicleIndex);
+            double vehicleX = state.get(offset + VarTable.x.ordinal());
+            double vehicleVx = state.get(offset + VarTable.vx.ordinal());
+            double vehicleSpeed = state.get(offset + VarTable.speed.ordinal());
+            targetX = Math.min(targetX, vehicleX - VEHICLE_LENGTH - MIN_STABLE_FRONT_GAP);
+            targetVx = Math.min(targetVx, vehicleVx);
+            targetSpeed = Math.min(targetSpeed, vehicleSpeed);
+        }
+
         return state.apply(List.of(
-                new DataStateUpdate(egoOffset + VarTable.x.ordinal(), frontX - VEHICLE_LENGTH - MIN_STABLE_FRONT_GAP),
-                new DataStateUpdate(egoOffset + VarTable.vx.ordinal(), frontVx),
-                new DataStateUpdate(egoOffset + VarTable.speed.ordinal(), frontSpeed),
-                new DataStateUpdate(egoOffset + VarTable.targetSpeed.ordinal(), frontSpeed)
+                new DataStateUpdate(egoOffset + VarTable.x.ordinal(), targetX),
+                new DataStateUpdate(egoOffset + VarTable.vx.ordinal(), targetVx),
+                new DataStateUpdate(egoOffset + VarTable.speed.ordinal(), targetSpeed),
+                new DataStateUpdate(egoOffset + VarTable.targetSpeed.ordinal(), targetSpeed)
         ));
     }
 
@@ -354,8 +417,12 @@ public class StarkShieldApp {
         double egoVx = state.get(egoOffset + VarTable.vx.ordinal());
         double frontVx = state.get(frontOffset + VarTable.vx.ordinal());
         double frontGap = frontX - egoX - VEHICLE_LENGTH;
-        double closingSpeed = Math.max(0.0, egoVx - frontVx);
-        if (closingSpeed == 0.0) {
+        double relativeSpeed = egoVx - frontVx;
+        double closingSpeed = Math.max(0.0, relativeSpeed);
+        if (frontGap >= MIN_CLOSE_FRONT_GAP && closingSpeed == 0.0) {
+            return 0.0;
+        }
+        if (frontGap < MIN_CLOSE_FRONT_GAP && relativeSpeed <= -SAFE_RECEDING_RELATIVE_SPEED) {
             return 0.0;
         }
         double distanceViolation = Math.max(0.0, MIN_STABLE_FRONT_GAP - frontGap) / MIN_STABLE_FRONT_GAP;
@@ -393,6 +460,27 @@ public class StarkShieldApp {
             }
         }
         return nearestFrontIndex;
+    }
+
+    private List<Integer> getVehiclesInAdjacentLanes(DataState state, int egoIndex) {
+        List<Integer> adjacentVehicles = new ArrayList<>();
+        if (egoIndex < 0) {
+            return adjacentVehicles;
+        }
+
+        int egoOffset = vehicleOffset(egoIndex);
+        int egoLane = (int) state.get(egoOffset + VarTable.lane_index.ordinal());
+        for (int i = 0; i < vehicles.size(); i++) {
+            if (i == egoIndex) {
+                continue;
+            }
+            int offset = vehicleOffset(i);
+            int lane = (int) state.get(offset + VarTable.lane_index.ordinal());
+            if (lane >= egoLane - 1 && lane <= egoLane + 1) {
+                adjacentVehicles.add(i);
+            }
+        }
+        return adjacentVehicles;
     }
 
     private int getFrontVehicleIndexInLane(DataState state, int egoIndex, int targetLane) {

@@ -32,6 +32,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Type;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,8 +45,12 @@ public class StateSaver {
     public static void saveState(List<Vehicle> vehicles, String filePath) {
         File outputFile = new File(filePath);
         File parent = outputFile.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IllegalStateException("Could not create state directory: " + parent.getAbsolutePath());
+        if (parent != null) {
+            try {
+                Files.createDirectories(parent.toPath());
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not create state directory: " + parent.getAbsolutePath(), e);
+            }
         }
 
         try (FileWriter writer = new FileWriter(outputFile)) {
