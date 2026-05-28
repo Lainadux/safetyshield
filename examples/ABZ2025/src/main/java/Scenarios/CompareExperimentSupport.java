@@ -79,6 +79,13 @@ final class CompareExperimentSupport {
                                                      String methodName,
                                                      StarkScenarioRunner.DecisionMode decisionMode,
                                                      TimingProfile timingProfile) throws Exception {
+        return runExperiment(config, methodName, decisionMode, timingProfile);
+    }
+
+    static ExperimentResult runExperiment(GenerateInitialLogsRun.GenerationConfig config,
+                                          String methodName,
+                                          StarkScenarioRunner.DecisionMode decisionMode,
+                                          TimingProfile timingProfile) throws Exception {
         Path logDir = Path.of(config.logDir);
         List<Path> initialStateFiles = listInitialStateFiles(logDir);
         int workerCount = Math.max(1, Math.min(THREAD_COUNT, initialStateFiles.size()));
@@ -102,7 +109,7 @@ final class CompareExperimentSupport {
                     options.printDiagnostics = false;
                     options.timeForSimulationSeconds = config.timeForSimulationSeconds;
                     options.decisionMode = decisionMode;
-                    options.pureRejectProbability = timingProfile.rejectProbability;
+                    options.pureRejectProbability = timingProfile == null ? 0.0 : timingProfile.rejectProbability;
                     options.speedRejectProbabilityModel = timingProfile;
 
                     StarkScenarioRunner.RunResult result = StarkScenarioRunner.runScenario(realWorld, options);
@@ -141,6 +148,7 @@ final class CompareExperimentSupport {
 
     static void writeComparison(Path logDir) throws IOException {
         ExperimentResult stark = getStarkResult(logDir);
+        Optional<ExperimentResult> noShield = readResult(logDir, "no_shield");
         Optional<ExperimentResult> pure = readResult(logDir, "pure_probability");
         Optional<ExperimentResult> joint = readResult(logDir, "joint_speed_probability");
 
@@ -153,6 +161,7 @@ final class CompareExperimentSupport {
                 | method | totalCount | crashCount | crashProbability |
                 | --- | ---: | ---: | ---: |
                 | stark_shield | %d | %d | %.8f |
+                | no_shield | %s | %s | %s |
                 | pure_probability | %s | %s | %s |
                 | joint_speed_probability | %s | %s | %s |
                 """,
@@ -161,6 +170,9 @@ final class CompareExperimentSupport {
                 stark.totalCount,
                 stark.crashCount,
                 stark.crashProbability(),
+                field(noShield, r -> String.valueOf(r.totalCount)),
+                field(noShield, r -> String.valueOf(r.crashCount)),
+                field(noShield, r -> String.format(Locale.US, "%.8f", r.crashProbability())),
                 field(pure, r -> String.valueOf(r.totalCount)),
                 field(pure, r -> String.valueOf(r.crashCount)),
                 field(pure, r -> String.format(Locale.US, "%.8f", r.crashProbability())),

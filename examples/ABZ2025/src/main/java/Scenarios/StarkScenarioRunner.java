@@ -94,6 +94,8 @@ public final class StarkScenarioRunner {
                         if (options.verifyTimingStats != null) {
                             options.verifyTimingStats.record(verifyElapsedNanos, !isSafe, protectedControlledVehicle.speed);
                         }
+                    } else if (options.decisionMode == DecisionMode.NO_SHIELD) {
+                        isSafe = true;
                     } else {
                         isSafe = !options.shouldRejectByProbability(protectedControlledVehicle.speed);
                     }
@@ -289,6 +291,7 @@ public final class StarkScenarioRunner {
     }
 
     public enum DecisionMode {
+        NO_SHIELD,
         STARK_SHIELD,
         PURE_PROBABILITY,
         SPEED_CONDITIONAL_PROBABILITY

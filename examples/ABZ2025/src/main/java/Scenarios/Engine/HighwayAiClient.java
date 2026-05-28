@@ -18,8 +18,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
 public class HighwayAiClient {
-    //private static final String DEFAULT_AI_PROFILE = "base";
-    private static final String DEFAULT_AI_PROFILE = "adversarial";
+    private static final String DEFAULT_AI_PROFILE = "base";
+    //private static final String DEFAULT_AI_PROFILE = "adversarial";
     private static final Gson GSON = new Gson();
     private static final CopyOnWriteArrayList<HighwayAiClient> CLIENTS = new CopyOnWriteArrayList<>();
     private static final ThreadLocal<HighwayAiClient> INSTANCE = ThreadLocal.withInitial(() -> {
@@ -81,7 +81,7 @@ public class HighwayAiClient {
                 python.toString(),
                 script.toString(),
                 "ai-server",
-                resolveAiProfile()
+                getConfiguredAiProfile()
         );
         builder.directory(script.getParent().toFile());
         builder.redirectError(ProcessBuilder.Redirect.INHERIT);
@@ -165,7 +165,7 @@ public class HighwayAiClient {
                 .resolve("HighwayEnvironment_Base.py");
     }
 
-    private String resolveAiProfile() {
+    public static String getConfiguredAiProfile() {
         String configured = System.getProperty("abz.ai.profile");
         if (configured == null || configured.isBlank()) {
             configured = System.getenv("ABZ_AI_PROFILE");

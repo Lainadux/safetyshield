@@ -165,6 +165,7 @@ public class GenerateInitialLogsRun {
                 - dt: %.3f
                 - simulationSeconds: %d
                 - shieldPredictFutureSeconds: %d
+                - aiProfile: `%s`
                 - realWorldPopulateMethod: `HighwayEngine.populateTraffic(int targetVehicles, int numLanes, double minX, double maxX, boolean polite)`
                 - realWorldPopulateArguments: `targetVehicles=%d, numLanes=%d, minX=%.1f, maxX=%.1f, polite=%s`
                 - initialStateDescription: one EGO vehicle is spawned first with `id=0`, `role=EGO`, `x=0`; remaining vehicles are NPCs sampled in the configured lane/x range.
@@ -185,6 +186,7 @@ public class GenerateInitialLogsRun {
                 config.dt,
                 config.timeForSimulationSeconds,
                 config.shieldPredictFutureSeconds,
+                HighwayAiClient.getConfiguredAiProfile(),
                 config.populateTargetVehicles,
                 config.populateNumLanes,
                 config.populateMinX,
