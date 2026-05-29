@@ -12,6 +12,7 @@ import java.util.Random;
 
 public class HighwayEngine {
     public boolean egoCentered = false;
+    public boolean placeEgoAtTrafficMiddle = false;
     public boolean saveInitStateAnyWay = false;
     public boolean requireRender = true;
     public boolean requireCollisionLog = false;
@@ -234,7 +235,7 @@ public class HighwayEngine {
 
             v.x = minX + (maxX - minX) * rand.nextDouble();
             if(v.role.equals("EGO")){
-                v.x = 0;
+                v.x = placeEgoAtTrafficMiddle ? (minX + maxX) / 2.0 : 0;
             }
             v.y = yCenter;
            // v.lane_index = lane;
@@ -557,7 +558,7 @@ public class HighwayEngine {
 
 
             g2d.setColor(Color.YELLOW);
-            g2d.drawString(String.format("v:%.1f", v.speed), px - 15, py - 20);
+            g2d.drawString(String.format("v:%.1f T:%.1f p:%.2f", v.speed, v.targetSpeed, v.politeness), px - 15, py - 20);
             if (v.mobiling && !v.mobilDebug.isEmpty()) {
                 int line = 0;
                 List<Integer> mobilLanes = new ArrayList<>(v.mobilDebug.keySet());
@@ -649,12 +650,20 @@ public class HighwayEngine {
 
     public StarkShieldApp createStarkShieldApp(int futureSeconds, double shieldEgoRangeMeters,
                                                boolean randomizeHiddenTargetAndCooldown) {
+        return createStarkShieldApp(futureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, false);
+    }
+
+    public StarkShieldApp createStarkShieldApp(int futureSeconds, double shieldEgoRangeMeters,
+                                               boolean randomizeHiddenTargetAndCooldown,
+                                               boolean checkChangeLaneToRearVehicleThreat) {
         if(this.vehicles == null || this.vehicles.isEmpty()) {
             throw new IllegalStateException("Engine must have vehicles to create StarkShieldApp");
         }
 
         return new StarkShieldApp(this, this.vehicles, futureSeconds,
-                shieldEgoRangeMeters, randomizeHiddenTargetAndCooldown);
+                shieldEgoRangeMeters, randomizeHiddenTargetAndCooldown,
+                checkChangeLaneToRearVehicleThreat);
     }
 
 

@@ -23,6 +23,8 @@
 package Scenarios.Engine;
 
 import java.util.List;
+import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class ControlledVehicle extends Vehicle {
     public boolean simulated = false;
@@ -96,12 +98,44 @@ public class ControlledVehicle extends Vehicle {
 
     }
     public void fetchDesiredLaneAndTargetSpeed(boolean random) throws Exception {
-        if(random) this.randomActionGenerator();
+        if(random) this.applyAiAction(randomAiDecision());
         else{
             this.applyAiAction(HighwayAiClient.getInstance().decide(this));
 
         }
 
+    }
+
+    public void fetchRandomDesiredLaneAndTargetSpeed() {
+        HighwayEngine engine = this.getEngine();
+        if(engine.stepCount % engine.STEPS_PER_SECOND == 0) {
+            this.applyAiAction(randomAiDecision());
+        }
+    }
+
+    public void applyRandomDecision(Random random) {
+        this.applyAiAction(randomAiDecision(random));
+    }
+
+    public static HighwayAiClient.AiDecision randomAiDecision() {
+        return randomAiDecision(ThreadLocalRandom.current().nextInt(5));
+    }
+
+    public static HighwayAiClient.AiDecision randomAiDecision(Random random) {
+        return randomAiDecision(random.nextInt(5));
+    }
+
+    private static HighwayAiClient.AiDecision randomAiDecision(int action) {
+        HighwayAiClient.AiDecision decision = new HighwayAiClient.AiDecision();
+        decision.action = action;
+        decision.action_name = switch (action) {
+            case 0 -> "LANE_LEFT";
+            case 2 -> "LANE_RIGHT";
+            case 3 -> "FASTER";
+            case 4 -> "SLOWER";
+            default -> "IDLE";
+        };
+        return decision;
     }
     protected void applyAiAction(HighwayAiClient.AiDecision decision) {
         this.lastAiDecision = decision;
@@ -136,6 +170,10 @@ public class ControlledVehicle extends Vehicle {
     }
 
     public void randomActionGenerator(){
+        if (ThreadLocalRandom.current().nextInt(1) == 0) {
+            this.applyAiAction(randomAiDecision());
+            return;
+        }
 
         boolean changeLane = Math.random() < 0.3;
         if(changeLane){

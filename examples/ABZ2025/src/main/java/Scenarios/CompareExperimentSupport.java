@@ -108,6 +108,10 @@ final class CompareExperimentSupport {
                     options.rethrowOnCrash = false;
                     options.printDiagnostics = false;
                     options.timeForSimulationSeconds = config.timeForSimulationSeconds;
+                    options.shieldPredictFutureSeconds = config.shieldPredictFutureSeconds;
+                    options.shieldEgoRangeMeters = config.shieldEgoRangeMeters;
+                    options.randomizeShieldHiddenTargetAndCooldown = config.randomizeShieldHiddenTargetAndCooldown;
+                    options.checkChangeLaneToRearVehicleThreat = config.checkChangeLaneToRearVehicleThreat;
                     options.decisionMode = decisionMode;
                     options.pureRejectProbability = timingProfile == null ? 0.0 : timingProfile.rejectProbability;
                     options.speedRejectProbabilityModel = timingProfile;

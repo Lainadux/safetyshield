@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.JOptionPane;
@@ -63,6 +64,12 @@ public final class StarkScenarioRunner {
         double dt = realWorld.dt;
         ProtectedControlledVehicle protectedControlledVehicle = ensureProtectedEgo(realWorld);
         List<Vehicle> initialScenario = deepCopyVehicles(realWorld.vehicles);
+        Random randomActionGenerator = options.randomActionSeed == null
+                ? null
+                : new Random(options.randomActionSeed);
+        Random probabilityRejectionRandom = options.probabilityRejectionSeed == null
+                ? null
+                : new Random(options.probabilityRejectionSeed);
 
         boolean crashed = false;
         boolean initialScenarioSaved = false;
@@ -75,7 +82,15 @@ public final class StarkScenarioRunner {
                 if (realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0) {
                     prevTgtspd = protectedControlledVehicle.targetSpeed;
                     prevCurrentLane = protectedControlledVehicle.getLaneIndex();
-                    protectedControlledVehicle.fetchDesiredLaneAndTargetSpeed();
+                    if (options.useRandomActionGenerator) {
+                        if (randomActionGenerator == null) {
+                            protectedControlledVehicle.fetchRandomDesiredLaneAndTargetSpeed();
+                        } else {
+                            protectedControlledVehicle.applyRandomDecision(randomActionGenerator);
+                        }
+                    } else {
+                        protectedControlledVehicle.fetchDesiredLaneAndTargetSpeed();
+                    }
                 }
 
                 if (realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0) {
@@ -87,7 +102,8 @@ public final class StarkScenarioRunner {
                         starkShieldApp = shieldEngine.createStarkShieldApp(
                                 options.shieldPredictFutureSeconds,
                                 options.shieldEgoRangeMeters,
-                                options.randomizeShieldHiddenTargetAndCooldown);
+                                options.randomizeShieldHiddenTargetAndCooldown,
+                                options.checkChangeLaneToRearVehicleThreat);
                         long verifyStartNanos = System.nanoTime();
                         isSafe = starkShieldApp.verifySafe();
                         long verifyElapsedNanos = System.nanoTime() - verifyStartNanos;
@@ -97,7 +113,7 @@ public final class StarkScenarioRunner {
                     } else if (options.decisionMode == DecisionMode.NO_SHIELD) {
                         isSafe = true;
                     } else {
-                        isSafe = !options.shouldRejectByProbability(protectedControlledVehicle.speed);
+                        isSafe = !options.shouldRejectByProbability(protectedControlledVehicle.speed, probabilityRejectionRandom);
                     }
                     HighwayAiClient.AiDecision decision = protectedControlledVehicle.getLastAiDecision();
 
@@ -274,19 +290,26 @@ public final class StarkScenarioRunner {
         public int shieldPredictFutureSeconds = 3;
         public double shieldEgoRangeMeters = StarkShieldApp.DEFAULT_SHIELD_EGO_RANGE_METERS;
         public boolean randomizeShieldHiddenTargetAndCooldown = StarkShieldApp.DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN;
+        public boolean checkChangeLaneToRearVehicleThreat = false;
         public VerifyTimingStats verifyTimingStats = null;
+        public boolean useRandomActionGenerator = false;
+        public Long randomActionSeed = null;
+        public Long probabilityRejectionSeed = null;
         public DecisionMode decisionMode = DecisionMode.STARK_SHIELD;
         public double pureRejectProbability = 0.0;
         public SpeedRejectProbabilityModel speedRejectProbabilityModel = null;
         public String logDir = DEFAULT_LOG_DIR;
 
-        private boolean shouldRejectByProbability(double egoSpeed) {
+        private boolean shouldRejectByProbability(double egoSpeed, Random random) {
             double probability = decisionMode == DecisionMode.SPEED_CONDITIONAL_PROBABILITY
                     && speedRejectProbabilityModel != null
                     ? speedRejectProbabilityModel.probabilityForSpeed(egoSpeed)
                     : pureRejectProbability;
             probability = Math.max(0.0, Math.min(1.0, probability));
-            return java.util.concurrent.ThreadLocalRandom.current().nextDouble() < probability;
+            double value = random == null
+                    ? java.util.concurrent.ThreadLocalRandom.current().nextDouble()
+                    : random.nextDouble();
+            return value < probability;
         }
     }
 
