@@ -22,6 +22,7 @@ public class HighwayAiClient {
     //private static final String DEFAULT_AI_PROFILE = "adversarial";
     private static final Gson GSON = new Gson();
     private static final CopyOnWriteArrayList<HighwayAiClient> CLIENTS = new CopyOnWriteArrayList<>();
+    private static final ThreadLocal<String> AI_PROFILE_OVERRIDE = new ThreadLocal<>();
     private static final ThreadLocal<HighwayAiClient> INSTANCE = ThreadLocal.withInitial(() -> {
         HighwayAiClient client = new HighwayAiClient();
         CLIENTS.add(client);
@@ -31,12 +32,25 @@ public class HighwayAiClient {
     private Process process;
     private BufferedWriter input;
     private BufferedReader output;
+    private String activeProfile;
 
     private HighwayAiClient() {
     }
 
     public static HighwayAiClient getInstance() {
-        return INSTANCE.get();
+        HighwayAiClient client = INSTANCE.get();
+        if (!CLIENTS.contains(client)) {
+            CLIENTS.add(client);
+        }
+        return client;
+    }
+
+    public static void setThreadAiProfile(String profile) {
+        if (profile == null || profile.isBlank()) {
+            AI_PROFILE_OVERRIDE.remove();
+        } else {
+            AI_PROFILE_OVERRIDE.set(profile.trim());
+        }
     }
 
     public static void stopAll() {
@@ -71,9 +85,11 @@ public class HighwayAiClient {
     }
 
     private void ensureStarted() throws IOException {
-        if (process != null && process.isAlive()) {
+        String configuredProfile = getConfiguredAiProfile();
+        if (process != null && process.isAlive() && configuredProfile.equals(activeProfile)) {
             return;
         }
+        stop();
 
         Path python = resolvePythonExecutable();
         Path script = resolveAiScript();
@@ -81,7 +97,7 @@ public class HighwayAiClient {
                 python.toString(),
                 script.toString(),
                 "ai-server",
-                getConfiguredAiProfile()
+                configuredProfile
         );
         builder.directory(script.getParent().toFile());
         builder.redirectError(ProcessBuilder.Redirect.INHERIT);
@@ -95,6 +111,7 @@ public class HighwayAiClient {
             stop();
             throw new IOException("AI server did not become ready");
         }
+        activeProfile = configuredProfile;
         System.out.println("AI server ready: " + ready);
     }
 
@@ -166,7 +183,11 @@ public class HighwayAiClient {
     }
 
     public static String getConfiguredAiProfile() {
-        String configured = System.getProperty("abz.ai.profile");
+        String configured = AI_PROFILE_OVERRIDE.get();
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        configured = System.getProperty("abz.ai.profile");
         if (configured == null || configured.isBlank()) {
             configured = System.getenv("ABZ_AI_PROFILE");
         }
@@ -209,6 +230,7 @@ public class HighwayAiClient {
         process = null;
         input = null;
         output = null;
+        activeProfile = null;
     }
 
     public static class AiDecision {

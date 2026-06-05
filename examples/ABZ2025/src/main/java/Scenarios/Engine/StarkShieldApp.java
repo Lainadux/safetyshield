@@ -77,6 +77,7 @@ public class StarkShieldApp {
     private static final double RANDOM_COOLDOWN_MAX = 1.0;
     public static final double DEFAULT_SHIELD_EGO_RANGE_METERS = 200.0;
     public static final boolean DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN = true;
+    public static final boolean DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER = true;
     private static final int EVOLUTION_SEQUENCE_SIZE = 10;
     //public int stepCount = 0;
     private List<Vehicle> finalVehicles;
@@ -103,23 +104,36 @@ public class StarkShieldApp {
     private final double shieldEgoRangeMeters;
     private final boolean randomizeHiddenTargetAndCooldown;
     private final boolean checkChangeLaneToRearVehicleThreat;
+    private final boolean npcUsesIdmCooldown;
+    private final boolean readShieldIdmCooldownTimer;
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds) {
         this(engine, vehicles, predictFutureSeconds,
                 DEFAULT_SHIELD_EGO_RANGE_METERS,
                 DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN,
-                false);
+                false,
+                DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER);
     }
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
                           double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown) {
         this(engine, vehicles, predictFutureSeconds,
-                shieldEgoRangeMeters, randomizeHiddenTargetAndCooldown, false);
+                shieldEgoRangeMeters, randomizeHiddenTargetAndCooldown, false,
+                DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER);
     }
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
                           double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown,
                           boolean checkChangeLaneToRearVehicleThreat) {
+        this(engine, vehicles, predictFutureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER);
+    }
+
+    public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
+                          double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown,
+                          boolean checkChangeLaneToRearVehicleThreat,
+                          boolean readShieldIdmCooldownTimer) {
         this.engine = engine;
         this.dt = engine.dt;
         this.STEPS_PER_SECOND = engine.STEPS_PER_SECOND;
@@ -127,9 +141,11 @@ public class StarkShieldApp {
         this.shieldEgoRangeMeters = shieldEgoRangeMeters;
         this.randomizeHiddenTargetAndCooldown = randomizeHiddenTargetAndCooldown;
         this.checkChangeLaneToRearVehicleThreat = checkChangeLaneToRearVehicleThreat;
+        this.readShieldIdmCooldownTimer = readShieldIdmCooldownTimer;
         this.vehicles = vehicles;
         this.filteredVehicles = getVehiclesWithinEgoRangeIncludingEgo(shieldEgoRangeMeters);
         this.vehicles = this.filteredVehicles;
+        this.npcUsesIdmCooldown = hasIdmCooldownNpc(this.vehicles);
         this.observedAccelerationByVehicleId = getObservedAccelerationByVehicleId(this.vehicles);
 
         initialState = randomizeHiddenTargetAndCooldown
@@ -863,6 +879,15 @@ public class StarkShieldApp {
         return null;
     }
 
+    private boolean hasIdmCooldownNpc(List<Vehicle> vehicles) {
+        for (Vehicle vehicle : vehicles) {
+            if (!(vehicle instanceof ControlledVehicle) && vehicle instanceof IDMCooldownVehicle) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private DataState getInitialState(List<Vehicle> vehicles) {
 //        System.out.println("initial state fetched by stark:");
 //        for (Vehicle v : vehicles) {
@@ -890,6 +915,8 @@ public class StarkShieldApp {
             values.put(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering);
             values.put(offSet + VarTable.role.ordinal(), v.role.equals("EGO") ? 0.0 : 1.0);
             values.put(offSet + VarTable.targetSpeed.ordinal(), v.targetSpeed);
+            values.put(offSet + VarTable.idmCooldownTimer.ordinal(), getIdmCooldownTimer(v));
+            values.put(offSet + VarTable.idmActionStepLength.ordinal(), getIdmActionStepLength(v));
 //            if(v.role.equals("EGO")){
 //                System.out.println("starked ego intention targetspeed: " + v.targetSpeed + ", current speed: " + v.speed);
 //            }
@@ -934,6 +961,8 @@ public class StarkShieldApp {
             values.put(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering);
             values.put(offSet + VarTable.role.ordinal(), v.role.equals("EGO") ? 0.0 : 1.0);
             values.put(offSet + VarTable.targetSpeed.ordinal(), getRandomTargetSpeed(v));
+            values.put(offSet + VarTable.idmCooldownTimer.ordinal(), getIdmCooldownTimer(v));
+            values.put(offSet + VarTable.idmActionStepLength.ordinal(), getIdmActionStepLength(v));
         }
         values.put(vehicles.size() * VarTable.values().length, 0.0);
         values.put(vehicles.size() * VarTable.values().length + 1, -1.0);
@@ -1063,6 +1092,23 @@ public class StarkShieldApp {
                 RANDOM_COOLDOWN_MIN, RANDOM_COOLDOWN_MAX);
     }
 
+    private double getIdmCooldownTimer(Vehicle vehicle) {
+        if (!(vehicle instanceof IDMCooldownVehicle idmCooldownVehicle)) {
+            return 0.0;
+        }
+        if (readShieldIdmCooldownTimer || "EGO".equals(vehicle.role)) {
+            return idmCooldownVehicle.idmCooldownTimer;
+        }
+        double maxCooldown = Math.max(0.0, idmCooldownVehicle.idmActionStepLength);
+        return hiddenStateRandom.nextDouble() * maxCooldown;
+    }
+
+    private double getIdmActionStepLength(Vehicle vehicle) {
+        return vehicle instanceof IDMCooldownVehicle idmCooldownVehicle
+                ? idmCooldownVehicle.idmActionStepLength
+                : 0.0;
+    }
+
     private double clippedGaussian(double mean, double std, double min, double max) {
         double value = mean + hiddenStateRandom.nextGaussian() * std;
         return Math.max(min, Math.min(max, value));
@@ -1141,6 +1187,8 @@ public class StarkShieldApp {
             updates.add(new DataStateUpdate(offSet + VarTable.plannedAcceleration.ordinal(), v.plannedAcceleration));
             updates.add(new DataStateUpdate(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering));
             updates.add(new DataStateUpdate(offSet + VarTable.targetSpeed.ordinal(), v.targetSpeed));
+            updates.add(new DataStateUpdate(offSet + VarTable.idmCooldownTimer.ordinal(), getIdmCooldownTimer(v)));
+            updates.add(new DataStateUpdate(offSet + VarTable.idmActionStepLength.ordinal(), getIdmActionStepLength(v)));
             if(sandboxEngine.crashed){
                 updates.add(new DataStateUpdate(vehicles.size() * VarTable.values().length, 1.0));
             }
@@ -1199,9 +1247,10 @@ public class StarkShieldApp {
         }
     }
 
-    public static Vehicle stateToVehicle(DataState state, int vehicleIndex) {
+    private Vehicle stateToVehicle(DataState state, int vehicleIndex) {
         int offSet = vehicleIndex * VarTable.values().length;
-        Vehicle v = new Vehicle();
+        boolean isEgo = state.get(offSet + VarTable.role.ordinal()) == 0.0;
+        Vehicle v = !isEgo && npcUsesIdmCooldown ? new IDMCooldownVehicle() : new Vehicle();
         v.id = String.valueOf((int) state.get(offSet + VarTable.id.ordinal()));
         v.politeness = state.get(offSet + VarTable.politeness.ordinal());
         v.cooldownTimer = state.get(offSet + VarTable.cooldownTimer.ordinal());
@@ -1215,8 +1264,12 @@ public class StarkShieldApp {
         v.heading = state.get(offSet + VarTable.heading.ordinal());
         v.plannedAcceleration = state.get(offSet + VarTable.plannedAcceleration.ordinal());
         v.plannedSteering = state.get(offSet + VarTable.plannedSteering.ordinal());
-        v.role = state.get(offSet + VarTable.role.ordinal()) == 0.0 ? "EGO" : "NPC";
+        v.role = isEgo ? "EGO" : "NPC";
         v.targetSpeed = state.get(offSet + VarTable.targetSpeed.ordinal());
+        if (v instanceof IDMCooldownVehicle idmCooldownVehicle) {
+            idmCooldownVehicle.idmCooldownTimer = state.get(offSet + VarTable.idmCooldownTimer.ordinal());
+            idmCooldownVehicle.idmActionStepLength = state.get(offSet + VarTable.idmActionStepLength.ordinal());
+        }
         if(v.role.equals("EGO")){
             return new ProtectedControlledVehicle(v);
         }

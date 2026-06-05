@@ -144,8 +144,8 @@ public class Vehicle {
         this.plannedSteering = copy.plannedSteering;
         this.targetSpeed = copy.targetSpeed;
     }
-    public Vehicle deepCopySelf() {
-        Vehicle copy = new Vehicle();
+
+    protected void copyBaseStateTo(Vehicle copy) {
         copy.id = this.id;
         copy.politeness = this.politeness;
         copy.cooldownTimer = this.cooldownTimer;
@@ -160,6 +160,11 @@ public class Vehicle {
         copy.plannedAcceleration = this.plannedAcceleration;
         copy.plannedSteering = this.plannedSteering;
         copy.targetSpeed = this.targetSpeed;
+    }
+
+    public Vehicle deepCopySelf() {
+        Vehicle copy = new Vehicle();
+        copyBaseStateTo(copy);
         return copy;
     }
 
@@ -181,8 +186,15 @@ public class Vehicle {
 
         //this.target_lane_index = EngineUtils.computeTargetLane(this, allVehicles, List.of(0, 1), this.engine);
         this.setTargetLaneIndex(EngineUtils.computeTargetLane(this, allVehicles, List.of(0, 1), this.engine));
-        this.plannedAcceleration = Math.min(EngineUtils.computeAccel(this, allVehicles, this.getTargetLaneIndex()), EngineUtils.computeAccel(this, allVehicles, this.getLaneIndex()));
+        this.plannedAcceleration = computeIdmAcceleration(allVehicles);
         this.plannedSteering = EngineUtils.computeSteering(this);
+    }
+
+    protected double computeIdmAcceleration(List<Vehicle> allVehicles) throws Exception {
+        return Math.min(
+                EngineUtils.computeAccel(this, allVehicles, this.getTargetLaneIndex()),
+                EngineUtils.computeAccel(this, allVehicles, this.getLaneIndex())
+        );
     }
 
 

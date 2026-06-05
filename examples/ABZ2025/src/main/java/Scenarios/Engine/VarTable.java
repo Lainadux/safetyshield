@@ -37,6 +37,8 @@ public enum VarTable {
     plannedAcceleration,
     plannedSteering,
     targetSpeed,
+    idmCooldownTimer,
+    idmActionStepLength,
 
     role //0forEGO, 1forNPC
 }

@@ -59,7 +59,9 @@ public class GenerateInitialLogsRun {
                     options.shieldPredictFutureSeconds = config.shieldPredictFutureSeconds;
                     options.shieldEgoRangeMeters = config.shieldEgoRangeMeters;
                     options.randomizeShieldHiddenTargetAndCooldown = config.randomizeShieldHiddenTargetAndCooldown;
+                    options.readShieldIdmCooldownTimer = config.readShieldIdmCooldownTimer;
                     options.checkChangeLaneToRearVehicleThreat = config.checkChangeLaneToRearVehicleThreat;
+                    options.aiProfile = config.aiProfile;
                     options.verifyTimingStats = verifyTimingStats;
 
                     StarkScenarioRunner.runShieldedScenario(realWorld, options);
@@ -82,6 +84,9 @@ public class GenerateInitialLogsRun {
     private static HighwayEngine createWorld(GenerationConfig config) {
         HighwayEngine realWorld = new HighwayEngine(config.dt, true);
         realWorld.placeEgoAtTrafficMiddle = config.placeEgoAtTrafficMiddle;
+        realWorld.egoCentered = config.egoCentered;
+        realWorld.npcVehicleType = config.npcVehicleType;
+        realWorld.npcIdmActionStepLength = config.npcIdmActionStepLength;
         realWorld.populateTraffic(config.populateTargetVehicles, config.populateNumLanes,
                 config.populateMinX, config.populateMaxX, config.polite);
         realWorld.enhancedCollisionCheckEnabled = config.enhancedCollisionCheckEnabled;
@@ -171,15 +176,19 @@ public class GenerateInitialLogsRun {
                 - realWorldPopulateMethod: `HighwayEngine.populateTraffic(int targetVehicles, int numLanes, double minX, double maxX, boolean polite)`
                 - realWorldPopulateArguments: `targetVehicles=%d, numLanes=%d, minX=%.1f, maxX=%.1f, polite=%s`
                 - placeEgoAtTrafficMiddle: %s
-                - initialStateDescription: one EGO vehicle is spawned first with `id=0`, `role=EGO`; its x is either `0` or `(minX+maxX)/2` according to `placeEgoAtTrafficMiddle`; remaining vehicles are NPCs sampled in the configured lane/x range.
+                - egoCentered: %s
+                - initialStateDescription: one EGO vehicle is spawned first with `id=0`, `role=EGO`; its x is either `0` or `(minX+maxX)/2` according to `placeEgoAtTrafficMiddle`; when `egoCentered=true`, its lane is the middle lane; remaining vehicles are NPCs sampled in the configured lane/x range.
                 - initialSpeedDistribution: `speed = clippedGaussian(mean=20, std=3, range=[10,30])`
                 - initialTargetSpeedDistribution: `targetSpeed = speed + uniform(0,5)`
                 - initialCooldownDistribution: `cooldownTimer = uniform(0,1)`
                 - initialSpawnSafety: rejected and resampled when the initial state is not dynamically safe according to `HighwayEngine.isSpawnDynamicallySafe`
+                - realWorldNpcVehicleType: `%s`
+                - realWorldNpcIdmActionStepLength: %.3f
                 - realWorldPolitenessRandomized: %s
                 - starkShieldRadius: vehicles within +/- %.1f meters of EGO are visible to StarkShield
                 - starkShieldTargetSpeedSource: %s
                 - starkShieldCooldownTimerSource: %s
+                - starkShieldIdmCooldownTimerSource: %s
                 - checkChangeLaneToRearVehicleThreat: %s
                 """,
                 normalizeComment(config.comment),
@@ -190,13 +199,16 @@ public class GenerateInitialLogsRun {
                 config.dt,
                 config.timeForSimulationSeconds,
                 config.shieldPredictFutureSeconds,
-                HighwayAiClient.getConfiguredAiProfile(),
+                config.aiProfile,
                 config.populateTargetVehicles,
                 config.populateNumLanes,
                 config.populateMinX,
                 config.populateMaxX,
                 config.polite,
                 config.placeEgoAtTrafficMiddle,
+                config.egoCentered,
+                config.npcVehicleType,
+                config.npcIdmActionStepLength,
                 config.polite ? "true, NPC politeness is sampled from clipped Gaussian mean=0.5 std=1/6 range=[0,1]"
                         : "false, NPC politeness remains 0.0",
                 config.shieldEgoRangeMeters,
@@ -206,6 +218,9 @@ public class GenerateInitialLogsRun {
                 config.randomizeShieldHiddenTargetAndCooldown
                         ? "randomized for NPCs, clipped Gaussian mean=0.5 std=1/6 range=[0,1]; ego uses real cooldownTimer"
                         : "passed from real world vehicle state",
+                config.readShieldIdmCooldownTimer
+                        ? "passed from real world vehicle state"
+                        : "randomized for IDM cooldown NPCs, uniform range=[0,idmActionStepLength]",
                 config.checkChangeLaneToRearVehicleThreat
         );
     }
@@ -225,13 +240,18 @@ public class GenerateInitialLogsRun {
         public int shieldPredictFutureSeconds = 3;
         public double shieldEgoRangeMeters = StarkShieldApp.DEFAULT_SHIELD_EGO_RANGE_METERS;
         public boolean randomizeShieldHiddenTargetAndCooldown = StarkShieldApp.DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN;
+        public boolean readShieldIdmCooldownTimer = StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER;
         public boolean checkChangeLaneToRearVehicleThreat = false;
+        public String aiProfile = HighwayAiClient.getConfiguredAiProfile();
         public int populateTargetVehicles = 36;
         public int populateNumLanes = 3;
         public double populateMinX = 0.0;
         public double populateMaxX = 400.0;
         public boolean placeEgoAtTrafficMiddle = false;
+        public boolean egoCentered = false;
         public boolean polite = false;
         public boolean enhancedCollisionCheckEnabled = true;
+        public HighwayEngine.NpcVehicleType npcVehicleType = HighwayEngine.NpcVehicleType.DEFAULT;
+        public double npcIdmActionStepLength = 0.1;
     }
 }

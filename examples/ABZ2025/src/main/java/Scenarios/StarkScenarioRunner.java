@@ -78,6 +78,7 @@ public final class StarkScenarioRunner {
         long lastStep = (long) options.timeForSimulationSeconds * realWorld.STEPS_PER_SECOND - 1;
 
         try {
+            HighwayAiClient.setThreadAiProfile(options.aiProfile);
             while (realWorld.stepCount != lastStep) {
                 if (realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0) {
                     prevTgtspd = protectedControlledVehicle.targetSpeed;
@@ -103,7 +104,8 @@ public final class StarkScenarioRunner {
                                 options.shieldPredictFutureSeconds,
                                 options.shieldEgoRangeMeters,
                                 options.randomizeShieldHiddenTargetAndCooldown,
-                                options.checkChangeLaneToRearVehicleThreat);
+                                options.checkChangeLaneToRearVehicleThreat,
+                                options.readShieldIdmCooldownTimer);
                         long verifyStartNanos = System.nanoTime();
                         isSafe = starkShieldApp.verifySafe();
                         long verifyElapsedNanos = System.nanoTime() - verifyStartNanos;
@@ -151,6 +153,7 @@ public final class StarkScenarioRunner {
             }
             System.err.println("Scenario crashed, saved crash initial state and continuing: " + e.getMessage());
         } finally {
+            HighwayAiClient.setThreadAiProfile(null);
             if (options.saveInitialState && !initialScenarioSaved) {
                 saveInitialScenarioSnapshot(initialScenario, crashed, options.logDir);
             }
@@ -290,7 +293,9 @@ public final class StarkScenarioRunner {
         public int shieldPredictFutureSeconds = 3;
         public double shieldEgoRangeMeters = StarkShieldApp.DEFAULT_SHIELD_EGO_RANGE_METERS;
         public boolean randomizeShieldHiddenTargetAndCooldown = StarkShieldApp.DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN;
+        public boolean readShieldIdmCooldownTimer = StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER;
         public boolean checkChangeLaneToRearVehicleThreat = false;
+        public String aiProfile = HighwayAiClient.getConfiguredAiProfile();
         public VerifyTimingStats verifyTimingStats = null;
         public boolean useRandomActionGenerator = false;
         public Long randomActionSeed = null;

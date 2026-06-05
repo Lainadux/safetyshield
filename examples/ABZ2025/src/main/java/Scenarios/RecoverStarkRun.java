@@ -62,12 +62,17 @@ public class RecoverStarkRun {
             String comment = Files.readString(commentPath);
             options.randomizeShieldHiddenTargetAndCooldown = !comment.contains(
                     "starkShieldTargetSpeedSource: passed from real world vehicle state");
+            options.readShieldIdmCooldownTimer = !comment.contains(
+                    "starkShieldIdmCooldownTimerSource: randomized");
             options.shieldEgoRangeMeters = parseDoubleConfig(comment, "starkShieldRadius", options.shieldEgoRangeMeters);
             options.checkChangeLaneToRearVehicleThreat = parseBooleanConfig(comment,
                     "checkChangeLaneToRearVehicleThreat", options.checkChangeLaneToRearVehicleThreat);
+            options.aiProfile = parseStringConfig(comment, "aiProfile", options.aiProfile);
             System.out.printf(
-                    "Recovered StarkShield config: randomizeHiddenTargetAndCooldown=%s, radius=%.1f, rearThreatCheck=%s%n",
+                    "Recovered StarkShield config: aiProfile=%s, randomizeHiddenTargetAndCooldown=%s, readIdmCooldownTimer=%s, radius=%.1f, rearThreatCheck=%s%n",
+                    options.aiProfile,
                     options.randomizeShieldHiddenTargetAndCooldown,
+                    options.readShieldIdmCooldownTimer,
                     options.shieldEgoRangeMeters,
                     options.checkChangeLaneToRearVehicleThreat
             );
@@ -87,5 +92,11 @@ public class RecoverStarkRun {
         Matcher matcher = Pattern.compile("-\\s*" + Pattern.quote(key) + ":\\s*(true|false)")
                 .matcher(comment);
         return matcher.find() ? Boolean.parseBoolean(matcher.group(1)) : fallback;
+    }
+
+    private static String parseStringConfig(String comment, String key, String fallback) {
+        Matcher matcher = Pattern.compile("-\\s*" + Pattern.quote(key) + ":\\s*`?([^`\\r\\n]+)`?")
+                .matcher(comment);
+        return matcher.find() ? matcher.group(1).trim() : fallback;
     }
 }

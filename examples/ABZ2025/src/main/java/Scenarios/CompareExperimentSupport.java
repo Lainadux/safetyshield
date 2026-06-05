@@ -111,7 +111,9 @@ final class CompareExperimentSupport {
                     options.shieldPredictFutureSeconds = config.shieldPredictFutureSeconds;
                     options.shieldEgoRangeMeters = config.shieldEgoRangeMeters;
                     options.randomizeShieldHiddenTargetAndCooldown = config.randomizeShieldHiddenTargetAndCooldown;
+                    options.readShieldIdmCooldownTimer = config.readShieldIdmCooldownTimer;
                     options.checkChangeLaneToRearVehicleThreat = config.checkChangeLaneToRearVehicleThreat;
+                    options.aiProfile = config.aiProfile;
                     options.decisionMode = decisionMode;
                     options.pureRejectProbability = timingProfile == null ? 0.0 : timingProfile.rejectProbability;
                     options.speedRejectProbabilityModel = timingProfile;

@@ -62,6 +62,9 @@ public class RandomActionCompareTest {
         for (int i = 0; i < TEST_COUNT; i++) {
             HighwayEngine realWorld = new HighwayEngine(config.dt, true);
             realWorld.placeEgoAtTrafficMiddle = config.placeEgoAtTrafficMiddle;
+            realWorld.egoCentered = config.egoCentered;
+            realWorld.npcVehicleType = config.npcVehicleType;
+            realWorld.npcIdmActionStepLength = config.npcIdmActionStepLength;
             realWorld.populateTraffic(config.populateTargetVehicles, config.populateNumLanes,
                     config.populateMinX, config.populateMaxX, config.polite);
             realWorld.enhancedCollisionCheckEnabled = config.enhancedCollisionCheckEnabled;
@@ -105,7 +108,9 @@ public class RandomActionCompareTest {
                     options.shieldPredictFutureSeconds = config.shieldPredictFutureSeconds;
                     options.shieldEgoRangeMeters = config.shieldEgoRangeMeters;
                     options.randomizeShieldHiddenTargetAndCooldown = config.randomizeShieldHiddenTargetAndCooldown;
+                    options.readShieldIdmCooldownTimer = config.readShieldIdmCooldownTimer;
                     options.checkChangeLaneToRearVehicleThreat = checkChangeLaneToRearVehicleThreat;
+                    options.aiProfile = config.aiProfile;
                     options.randomActionSeed = stableSeed(initialStateFile);
 
                     StarkScenarioRunner.RunResult result = StarkScenarioRunner.runScenario(realWorld, options);

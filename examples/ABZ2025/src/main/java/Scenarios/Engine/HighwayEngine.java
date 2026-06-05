@@ -11,6 +11,11 @@ import java.util.List;
 import java.util.Random;
 
 public class HighwayEngine {
+    public enum NpcVehicleType {
+        DEFAULT,
+        IDM_COOLDOWN
+    }
+
     public boolean egoCentered = false;
     public boolean placeEgoAtTrafficMiddle = false;
     public boolean saveInitStateAnyWay = false;
@@ -40,6 +45,8 @@ public class HighwayEngine {
     private static final int SPAWN_ATTEMPT_MULTIPLIER = 200;
     private static final double POLITENESS_MEAN = 0.5;
     private static final double POLITENESS_STD = 1.0 / 6.0;
+    public NpcVehicleType npcVehicleType = NpcVehicleType.DEFAULT;
+    public double npcIdmActionStepLength = 0.1;
     public int numLanes = 3;
 
 
@@ -228,7 +235,7 @@ public class HighwayEngine {
 
             }
             else {
-                v = new Vehicle();
+                v = createNpcVehicle();
                 v.role = "NPC";
             }
 
@@ -312,7 +319,7 @@ public class HighwayEngine {
 
             }
             else {
-                v = new Vehicle();
+                v = createNpcVehicle();
                 v.role = "NPC";
             }
 
@@ -358,6 +365,16 @@ public class HighwayEngine {
         }
 
 
+    }
+
+    private Vehicle createNpcVehicle() {
+        if (npcVehicleType == NpcVehicleType.IDM_COOLDOWN) {
+            IDMCooldownVehicle vehicle = new IDMCooldownVehicle();
+            vehicle.idmActionStepLength = npcIdmActionStepLength;
+            vehicle.idmCooldownTimer = 0.0;
+            return vehicle;
+        }
+        return new Vehicle();
     }
 
     private boolean isSpawnDynamicallySafe(Vehicle candidate) {
@@ -559,6 +576,7 @@ public class HighwayEngine {
 
             g2d.setColor(Color.YELLOW);
             g2d.drawString(String.format("v:%.1f T:%.1f p:%.2f", v.speed, v.targetSpeed, v.politeness), px - 15, py - 20);
+            g2d.drawString(String.format("a:%.2f %s", v.plannedAcceleration, idmCooldownLabel(v)), px - 15, py - 6);
             if (v.mobiling && !v.mobilDebug.isEmpty()) {
                 int line = 0;
                 List<Integer> mobilLanes = new ArrayList<>(v.mobilDebug.keySet());
@@ -583,6 +601,15 @@ public class HighwayEngine {
                 }
             }
         }
+    }
+
+    private String idmCooldownLabel(Vehicle vehicle) {
+        if (vehicle instanceof IDMCooldownVehicle idmCooldownVehicle) {
+            return String.format("idm:%.2f/%.2f",
+                    idmCooldownVehicle.idmCooldownTimer,
+                    idmCooldownVehicle.idmActionStepLength);
+        }
+        return "idm:-";
     }
 
     private Vehicle getCameraVehicle() {
@@ -657,13 +684,23 @@ public class HighwayEngine {
     public StarkShieldApp createStarkShieldApp(int futureSeconds, double shieldEgoRangeMeters,
                                                boolean randomizeHiddenTargetAndCooldown,
                                                boolean checkChangeLaneToRearVehicleThreat) {
+        return createStarkShieldApp(futureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER);
+    }
+
+    public StarkShieldApp createStarkShieldApp(int futureSeconds, double shieldEgoRangeMeters,
+                                               boolean randomizeHiddenTargetAndCooldown,
+                                               boolean checkChangeLaneToRearVehicleThreat,
+                                               boolean readShieldIdmCooldownTimer) {
         if(this.vehicles == null || this.vehicles.isEmpty()) {
             throw new IllegalStateException("Engine must have vehicles to create StarkShieldApp");
         }
 
         return new StarkShieldApp(this, this.vehicles, futureSeconds,
                 shieldEgoRangeMeters, randomizeHiddenTargetAndCooldown,
-                checkChangeLaneToRearVehicleThreat);
+                checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer);
     }
 
 
