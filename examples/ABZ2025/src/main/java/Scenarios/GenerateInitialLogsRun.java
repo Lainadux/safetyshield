@@ -2,6 +2,7 @@ package Scenarios;
 
 import Scenarios.Engine.HighwayAiClient;
 import Scenarios.Engine.HighwayEngine;
+import Scenarios.Engine.EngineUtils;
 import Scenarios.Engine.StarkShieldApp;
 
 import java.io.IOException;
@@ -87,6 +88,7 @@ public class GenerateInitialLogsRun {
         realWorld.egoCentered = config.egoCentered;
         realWorld.npcVehicleType = config.npcVehicleType;
         realWorld.npcIdmActionStepLength = config.npcIdmActionStepLength;
+        realWorld.idmTimeWanted = config.idmTimeWanted;
         realWorld.populateTraffic(config.populateTargetVehicles, config.populateNumLanes,
                 config.populateMinX, config.populateMaxX, config.polite);
         realWorld.enhancedCollisionCheckEnabled = config.enhancedCollisionCheckEnabled;
@@ -184,6 +186,7 @@ public class GenerateInitialLogsRun {
                 - initialSpawnSafety: rejected and resampled when the initial state is not dynamically safe according to `HighwayEngine.isSpawnDynamicallySafe`
                 - realWorldNpcVehicleType: `%s`
                 - realWorldNpcIdmActionStepLength: %.3f
+                - realWorldIdmTimeWanted: %.3f
                 - realWorldPolitenessRandomized: %s
                 - starkShieldRadius: vehicles within +/- %.1f meters of EGO are visible to StarkShield
                 - starkShieldTargetSpeedSource: %s
@@ -209,6 +212,7 @@ public class GenerateInitialLogsRun {
                 config.egoCentered,
                 config.npcVehicleType,
                 config.npcIdmActionStepLength,
+                config.idmTimeWanted,
                 config.polite ? "true, NPC politeness is sampled from clipped Gaussian mean=0.5 std=1/6 range=[0,1]"
                         : "false, NPC politeness remains 0.0",
                 config.shieldEgoRangeMeters,
@@ -253,5 +257,6 @@ public class GenerateInitialLogsRun {
         public boolean enhancedCollisionCheckEnabled = true;
         public HighwayEngine.NpcVehicleType npcVehicleType = HighwayEngine.NpcVehicleType.DEFAULT;
         public double npcIdmActionStepLength = 0.1;
+        public double idmTimeWanted = EngineUtils.DEFAULT_TIME_WANTED;
     }
 }

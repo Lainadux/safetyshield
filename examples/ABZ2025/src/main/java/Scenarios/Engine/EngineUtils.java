@@ -53,7 +53,7 @@ public class EngineUtils {
     private static final int LANE_WIDTH = 4;
     private static final double COMFORT_ACC_MAX = 3.0;
     private static final double DISTANCE_WANTED = 10;
-    private static final double TIME_WANTED = 1.5;
+    public static final double DEFAULT_TIME_WANTED = 1.5;
     private static final double COMFORT_ACC_MIN = -5.0;
     private static final double DELTA = 4.0;
     private static final double MAX_BRAKE = -5;
@@ -154,7 +154,7 @@ public class EngineUtils {
                 double dv = v - frontVehicle.vx;
                 double s = frontVehicle.x - vehicle.x - vehicle.LENGTH;
                 s = Math.max(s, 0.01);
-                double sStar = DISTANCE_WANTED + v * TIME_WANTED +
+                double sStar = DISTANCE_WANTED + v * timeWanted(vehicle) +
                         (v * dv) / (2 * Math.sqrt(COMFORT_ACC_MAX * Math.abs(COMFORT_ACC_MIN)));
                 sStar = Math.max(sStar, DISTANCE_WANTED);
                 double interactionTerm = Math.pow(sStar / s, 2);
@@ -181,7 +181,7 @@ public class EngineUtils {
             double dv = v - frontVehicle.vx;
             double s = frontVehicle.x - vehicle.x - vehicle.LENGTH;
             s = Math.max(s, 0.01);
-            double sStar = DISTANCE_WANTED + v * TIME_WANTED +
+            double sStar = DISTANCE_WANTED + v * timeWanted(vehicle) +
                     (v * dv) / (2 * Math.sqrt(COMFORT_ACC_MAX * Math.abs(COMFORT_ACC_MIN)));
             sStar = Math.max(sStar, DISTANCE_WANTED);
             double interactionTerm = Math.pow(sStar / s, 2);
@@ -203,7 +203,7 @@ public class EngineUtils {
         dv = (relative_vx * dir_x) + (relative_vy * dir_y);
         double v = thisVehicle.speed;
         double s0 = DISTANCE_WANTED;
-        double vT = v * TIME_WANTED;
+        double vT = v * timeWanted(thisVehicle);
         double kineticTerm = (v * dv) / (2.0 * Math.sqrt(COMFORT_ACC_MAX * Math.abs(COMFORT_ACC_MIN)));
         double d_star = s0 + vT + kineticTerm;
         d_star = Math.max(s0 + vT, d_star);
@@ -212,6 +212,14 @@ public class EngineUtils {
     }
     public static double clip(double accel){
         return Math.min(MAX_ACCELERATION, Math.max(MIN_BRAKE, accel));
+    }
+
+    private static double timeWanted(Vehicle vehicle) {
+        try {
+            return Math.max(0.0, vehicle.getEngine().idmTimeWanted);
+        } catch (IllegalStateException e) {
+            return DEFAULT_TIME_WANTED;
+        }
     }
     public static boolean isChangingLane(Vehicle vehicle) {
         //System.out.println("vehicle lane index: " + vehicle.lane_index + ", target lane index: " + vehicle.target_lane_index);

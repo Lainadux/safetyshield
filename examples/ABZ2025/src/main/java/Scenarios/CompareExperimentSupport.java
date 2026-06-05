@@ -100,6 +100,7 @@ final class CompareExperimentSupport {
                             initialStateFile.toString(),
                             config.dt
                     );
+                    realWorld.idmTimeWanted = config.idmTimeWanted;
 
                     StarkScenarioRunner.RunOptions options = new StarkScenarioRunner.RunOptions();
                     options.pauseAfterShieldDecision = false;

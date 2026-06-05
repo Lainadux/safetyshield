@@ -33,7 +33,7 @@ public class RecoverStarkRun {
         }
 
         StarkScenarioRunner.RunOptions options = new StarkScenarioRunner.RunOptions();
-        applyLoggedConfiguration(initialStateFile, options);
+        applyLoggedConfiguration(initialStateFile, realWorld, options);
         options.pauseAfterShieldDecision = PAUSE_AFTER_SHIELD_DECISION;
         options.promptPredictedStateOnPause = PROMPT_PREDICTED_STATE_ON_PAUSE;
         options.saveInitialState = false;
@@ -44,7 +44,8 @@ public class RecoverStarkRun {
         StarkScenarioRunner.runShieldedScenario(realWorld, options);
     }
 
-    private static void applyLoggedConfiguration(String initialStateFile, StarkScenarioRunner.RunOptions options) {
+    private static void applyLoggedConfiguration(String initialStateFile, HighwayEngine realWorld,
+                                                 StarkScenarioRunner.RunOptions options) {
         Path logPath = Path.of(initialStateFile).getParent();
         if (logPath == null) {
             options.randomizeShieldHiddenTargetAndCooldown = false;
@@ -68,9 +69,11 @@ public class RecoverStarkRun {
             options.checkChangeLaneToRearVehicleThreat = parseBooleanConfig(comment,
                     "checkChangeLaneToRearVehicleThreat", options.checkChangeLaneToRearVehicleThreat);
             options.aiProfile = parseStringConfig(comment, "aiProfile", options.aiProfile);
+            realWorld.idmTimeWanted = parseDoubleConfig(comment, "realWorldIdmTimeWanted", realWorld.idmTimeWanted);
             System.out.printf(
-                    "Recovered StarkShield config: aiProfile=%s, randomizeHiddenTargetAndCooldown=%s, readIdmCooldownTimer=%s, radius=%.1f, rearThreatCheck=%s%n",
+                    "Recovered StarkShield config: aiProfile=%s, idmTimeWanted=%.3f, randomizeHiddenTargetAndCooldown=%s, readIdmCooldownTimer=%s, radius=%.1f, rearThreatCheck=%s%n",
                     options.aiProfile,
+                    realWorld.idmTimeWanted,
                     options.randomizeShieldHiddenTargetAndCooldown,
                     options.readShieldIdmCooldownTimer,
                     options.shieldEgoRangeMeters,

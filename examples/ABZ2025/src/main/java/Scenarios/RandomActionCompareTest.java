@@ -65,6 +65,7 @@ public class RandomActionCompareTest {
             realWorld.egoCentered = config.egoCentered;
             realWorld.npcVehicleType = config.npcVehicleType;
             realWorld.npcIdmActionStepLength = config.npcIdmActionStepLength;
+            realWorld.idmTimeWanted = config.idmTimeWanted;
             realWorld.populateTraffic(config.populateTargetVehicles, config.populateNumLanes,
                     config.populateMinX, config.populateMaxX, config.polite);
             realWorld.enhancedCollisionCheckEnabled = config.enhancedCollisionCheckEnabled;
@@ -95,6 +96,7 @@ public class RandomActionCompareTest {
                             initialStateFile.toString(),
                             config.dt
                     );
+                    realWorld.idmTimeWanted = config.idmTimeWanted;
 
                     StarkScenarioRunner.RunOptions options = new StarkScenarioRunner.RunOptions();
                     options.decisionMode = decisionMode;

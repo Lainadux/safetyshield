@@ -47,6 +47,7 @@ public class HighwayEngine {
     private static final double POLITENESS_STD = 1.0 / 6.0;
     public NpcVehicleType npcVehicleType = NpcVehicleType.DEFAULT;
     public double npcIdmActionStepLength = 0.1;
+    public double idmTimeWanted = EngineUtils.DEFAULT_TIME_WANTED;
     public int numLanes = 3;
 
 

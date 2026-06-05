@@ -100,6 +100,7 @@ public final class StarkScenarioRunner {
                     if (options.decisionMode == DecisionMode.STARK_SHIELD) {
                         List<Vehicle> shieldVehicles = buildShieldVehicles(realWorld.vehicles);
                         HighwayEngine shieldEngine = new HighwayEngine(dt, true, true, shieldVehicles);
+                        shieldEngine.idmTimeWanted = realWorld.idmTimeWanted;
                         starkShieldApp = shieldEngine.createStarkShieldApp(
                                 options.shieldPredictFutureSeconds,
                                 options.shieldEgoRangeMeters,

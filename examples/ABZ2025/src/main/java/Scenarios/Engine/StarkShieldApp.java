@@ -1167,6 +1167,7 @@ public class StarkShieldApp {
         sandboxEngine.dt = this.dt;
         sandboxEngine.STEPS_PER_SECOND = this.STEPS_PER_SECOND;
         sandboxEngine.vehicles = localVehicles;
+        sandboxEngine.idmTimeWanted = this.engine.idmTimeWanted;
 
         //sandboxEngine.stepCount = this.stepCount;
         //if(this.stepCount % this.STEPS_PER_SECOND == 0 && this.stepCount > 0) {
