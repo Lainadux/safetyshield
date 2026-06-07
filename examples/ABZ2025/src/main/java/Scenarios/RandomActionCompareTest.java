@@ -65,6 +65,7 @@ public class RandomActionCompareTest {
             realWorld.egoCentered = config.egoCentered;
             realWorld.npcVehicleType = config.npcVehicleType;
             realWorld.npcIdmActionStepLength = config.npcIdmActionStepLength;
+            realWorld.npcReactionDelay = config.npcReactionDelay;
             realWorld.idmTimeWanted = config.idmTimeWanted;
             realWorld.populateTraffic(config.populateTargetVehicles, config.populateNumLanes,
                     config.populateMinX, config.populateMaxX, config.polite);

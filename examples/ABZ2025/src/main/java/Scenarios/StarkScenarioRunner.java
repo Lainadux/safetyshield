@@ -3,6 +3,8 @@ package Scenarios;
 import Scenarios.Engine.ControlledVehicle;
 import Scenarios.Engine.HighwayAiClient;
 import Scenarios.Engine.HighwayEngine;
+import Scenarios.Engine.InstantBasedStarkShieldApp;
+import Scenarios.Engine.InstantProtectedControlledVehicle;
 import Scenarios.Engine.ProtectedControlledVehicle;
 import Scenarios.Engine.StarkShieldApp;
 import Scenarios.Engine.StateSaver;
@@ -62,7 +64,7 @@ public final class StarkScenarioRunner {
 
     public static RunResult runScenario(HighwayEngine realWorld, RunOptions options) throws Exception {
         double dt = realWorld.dt;
-        ProtectedControlledVehicle protectedControlledVehicle = ensureProtectedEgo(realWorld);
+        ProtectedControlledVehicle protectedControlledVehicle = ensureProtectedEgo(realWorld, options);
         List<Vehicle> initialScenario = deepCopyVehicles(realWorld.vehicles);
         Random randomActionGenerator = options.randomActionSeed == null
                 ? null
@@ -80,10 +82,20 @@ public final class StarkScenarioRunner {
         try {
             HighwayAiClient.setThreadAiProfile(options.aiProfile);
             while (realWorld.stepCount != lastStep) {
-                if (realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0) {
+                if (isDecisionStep(realWorld, protectedControlledVehicle, options)) {
                     prevTgtspd = protectedControlledVehicle.targetSpeed;
                     prevCurrentLane = protectedControlledVehicle.getLaneIndex();
-                    if (options.useRandomActionGenerator) {
+                    if (protectedControlledVehicle instanceof InstantProtectedControlledVehicle instantEgo) {
+                        if (options.useRandomActionGenerator) {
+                            if (randomActionGenerator == null) {
+                                instantEgo.applyRandomDecision(new Random());
+                            } else {
+                                instantEgo.fetchInstantRandomDesiredLaneAndTargetSpeed(randomActionGenerator);
+                            }
+                        } else {
+                            instantEgo.fetchInstantDesiredLaneAndTargetSpeed();
+                        }
+                    } else if (options.useRandomActionGenerator) {
                         if (randomActionGenerator == null) {
                             protectedControlledVehicle.fetchRandomDesiredLaneAndTargetSpeed();
                         } else {
@@ -94,19 +106,33 @@ public final class StarkScenarioRunner {
                     }
                 }
 
-                if (realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0) {
+                if (isDecisionStep(realWorld, protectedControlledVehicle, options)) {
                     StarkShieldApp starkShieldApp = null;
                     boolean isSafe;
-                    if (options.decisionMode == DecisionMode.STARK_SHIELD) {
+                    if (options.decisionMode == DecisionMode.STARK_SHIELD
+                            || options.decisionMode == DecisionMode.INSTANT_BASED_STARK_SHIELD) {
                         List<Vehicle> shieldVehicles = buildShieldVehicles(realWorld.vehicles);
                         HighwayEngine shieldEngine = new HighwayEngine(dt, true, true, shieldVehicles);
                         shieldEngine.idmTimeWanted = realWorld.idmTimeWanted;
-                        starkShieldApp = shieldEngine.createStarkShieldApp(
-                                options.shieldPredictFutureSeconds,
-                                options.shieldEgoRangeMeters,
-                                options.randomizeShieldHiddenTargetAndCooldown,
-                                options.checkChangeLaneToRearVehicleThreat,
-                                options.readShieldIdmCooldownTimer);
+                        if (options.decisionMode == DecisionMode.INSTANT_BASED_STARK_SHIELD) {
+                            starkShieldApp = new InstantBasedStarkShieldApp(
+                                    shieldEngine,
+                                    shieldEngine.vehicles,
+                                    options.shieldPredictFutureSeconds,
+                                    options.shieldEgoRangeMeters,
+                                    options.randomizeShieldHiddenTargetAndCooldown,
+                                    options.checkChangeLaneToRearVehicleThreat,
+                                    options.readShieldIdmCooldownTimer,
+                                    options.instantShieldPredictionSeconds,
+                                    options.instantShieldAiActionSeconds);
+                        } else {
+                            starkShieldApp = shieldEngine.createStarkShieldApp(
+                                    options.shieldPredictFutureSeconds,
+                                    options.shieldEgoRangeMeters,
+                                    options.randomizeShieldHiddenTargetAndCooldown,
+                                    options.checkChangeLaneToRearVehicleThreat,
+                                    options.readShieldIdmCooldownTimer);
+                        }
                         long verifyStartNanos = System.nanoTime();
                         isSafe = starkShieldApp.verifySafe();
                         long verifyElapsedNanos = System.nanoTime() - verifyStartNanos;
@@ -129,8 +155,12 @@ public final class StarkScenarioRunner {
                     }
 
                     if (!isSafe) {
-                        protectedControlledVehicle.targetSpeed = prevTgtspd - 5 < 0 ? 0 : prevTgtspd - 5;
-                        protectedControlledVehicle.setTargetLaneIndex(prevCurrentLane);
+                        if (protectedControlledVehicle instanceof InstantProtectedControlledVehicle instantEgo) {
+                            instantEgo.activateIdmFallback(prevTgtspd);
+                        } else {
+                            protectedControlledVehicle.targetSpeed = prevTgtspd - 5 < 0 ? 0 : prevTgtspd - 5;
+                            protectedControlledVehicle.setTargetLaneIndex(prevCurrentLane);
+                        }
                     }
 
                     if (options.pauseAfterShieldDecision) {
@@ -173,7 +203,10 @@ public final class StarkScenarioRunner {
         List<Vehicle> vehicles = new ArrayList<>();
         boolean hasControlledEgo = false;
         for (Vehicle vehicle : loadedVehicles) {
-            if (vehicle instanceof ProtectedControlledVehicle) {
+            if (vehicle instanceof InstantProtectedControlledVehicle) {
+                vehicles.add(new InstantProtectedControlledVehicle(vehicle));
+                hasControlledEgo = true;
+            } else if (vehicle instanceof ProtectedControlledVehicle) {
                 vehicles.add(new ProtectedControlledVehicle(vehicle));
                 hasControlledEgo = true;
             } else if (vehicle instanceof ControlledVehicle || "EGO".equals(vehicle.role) || "0".equals(vehicle.id)) {
@@ -197,8 +230,34 @@ public final class StarkScenarioRunner {
         return Math.max(1, maxLane + 1);
     }
 
-    private static ProtectedControlledVehicle ensureProtectedEgo(HighwayEngine realWorld) {
+    private static boolean isDecisionStep(HighwayEngine realWorld, ProtectedControlledVehicle ego, RunOptions options) {
+        if (options.useInstantProtectedCar || options.decisionMode == DecisionMode.INSTANT_BASED_STARK_SHIELD) {
+            if (ego instanceof InstantProtectedControlledVehicle instantEgo) {
+                return instantEgo.isAiDecisionStep();
+            }
+            double intervalSeconds = ego instanceof InstantProtectedControlledVehicle instantEgo
+                    ? instantEgo.aiDecisionIntervalSeconds
+                    : options.instantAiDecisionIntervalSeconds;
+            int intervalSteps = Math.max(1, (int) Math.round(intervalSeconds / realWorld.dt));
+            return realWorld.stepCount % intervalSteps == 0;
+        }
+        return realWorld.stepCount % realWorld.STEPS_PER_SECOND == 0;
+    }
+
+    private static ProtectedControlledVehicle ensureProtectedEgo(HighwayEngine realWorld, RunOptions options) {
+        boolean useInstantProtectedCar = options.useInstantProtectedCar
+                || options.decisionMode == DecisionMode.INSTANT_BASED_STARK_SHIELD;
         ControlledVehicle egoVehicle = realWorld.getEgoVehicle();
+        if (useInstantProtectedCar && egoVehicle instanceof InstantProtectedControlledVehicle instantProtectedControlledVehicle) {
+            instantProtectedControlledVehicle.aiDecisionIntervalSeconds = options.instantAiDecisionIntervalSeconds;
+            return instantProtectedControlledVehicle;
+        }
+        if (useInstantProtectedCar) {
+            InstantProtectedControlledVehicle instantProtectedControlledVehicle = new InstantProtectedControlledVehicle(egoVehicle);
+            instantProtectedControlledVehicle.aiDecisionIntervalSeconds = options.instantAiDecisionIntervalSeconds;
+            realWorld.setEgoVehicle(instantProtectedControlledVehicle);
+            return instantProtectedControlledVehicle;
+        }
         if (egoVehicle instanceof ProtectedControlledVehicle) {
             return (ProtectedControlledVehicle) egoVehicle;
         }
@@ -225,7 +284,9 @@ public final class StarkScenarioRunner {
     private static List<Vehicle> deepCopyVehicles(List<Vehicle> vehicles) {
         List<Vehicle> copies = new ArrayList<>();
         for (Vehicle vehicle : vehicles) {
-            if (vehicle instanceof ProtectedControlledVehicle) {
+            if (vehicle instanceof InstantProtectedControlledVehicle) {
+                copies.add(new InstantProtectedControlledVehicle(vehicle));
+            } else if (vehicle instanceof ProtectedControlledVehicle) {
                 copies.add(new ProtectedControlledVehicle(vehicle));
             } else if (vehicle instanceof ControlledVehicle) {
                 copies.add(new ControlledVehicle(vehicle));
@@ -296,6 +357,10 @@ public final class StarkScenarioRunner {
         public boolean randomizeShieldHiddenTargetAndCooldown = StarkShieldApp.DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN;
         public boolean readShieldIdmCooldownTimer = StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER;
         public boolean checkChangeLaneToRearVehicleThreat = false;
+        public boolean useInstantProtectedCar = false;
+        public double instantAiDecisionIntervalSeconds = InstantProtectedControlledVehicle.DEFAULT_AI_DECISION_INTERVAL_SECONDS;
+        public double instantShieldPredictionSeconds = InstantBasedStarkShieldApp.DEFAULT_INSTANT_PREDICTION_SECONDS;
+        public double instantShieldAiActionSeconds = InstantBasedStarkShieldApp.DEFAULT_AI_ACTION_SECONDS;
         public String aiProfile = HighwayAiClient.getConfiguredAiProfile();
         public VerifyTimingStats verifyTimingStats = null;
         public boolean useRandomActionGenerator = false;
@@ -322,6 +387,7 @@ public final class StarkScenarioRunner {
     public enum DecisionMode {
         NO_SHIELD,
         STARK_SHIELD,
+        INSTANT_BASED_STARK_SHIELD,
         PURE_PROBABILITY,
         SPEED_CONDITIONAL_PROBABILITY
     }

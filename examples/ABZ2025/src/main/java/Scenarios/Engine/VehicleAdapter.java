@@ -53,12 +53,21 @@ public class VehicleAdapter implements JsonDeserializer<Vehicle>, JsonSerializer
             if ("ProtectedControlledVehicle".equals(type)) {
                 return pureGson.fromJson(json, ProtectedControlledVehicle.class);
             }
+            if ("InstantProtectedControlledVehicle".equals(type)) {
+                return pureGson.fromJson(json, InstantProtectedControlledVehicle.class);
+            }
             if ("ControlledVehicle".equals(type)) {
                 return pureGson.fromJson(json, ControlledVehicle.class);
             }
             if ("IDMCooldownVehicle".equals(type)) {
                 return pureGson.fromJson(json, IDMCooldownVehicle.class);
             }
+            if ("DelayedIDMVehicle".equals(type)) {
+                return pureGson.fromJson(json, DelayedIDMVehicle.class);
+            }
+        }
+        if (jsonObject.has("reactionDelay")) {
+            return pureGson.fromJson(json, DelayedIDMVehicle.class);
         }
         if (jsonObject.has("idmActionStepLength") || jsonObject.has("idmCooldownTimer")) {
             return pureGson.fromJson(json, IDMCooldownVehicle.class);

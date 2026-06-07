@@ -3,6 +3,8 @@ package Scenarios;
 import Scenarios.Engine.HighwayAiClient;
 import Scenarios.Engine.HighwayEngine;
 import Scenarios.Engine.EngineUtils;
+import Scenarios.Engine.InstantBasedStarkShieldApp;
+import Scenarios.Engine.InstantProtectedControlledVehicle;
 import Scenarios.Engine.StarkShieldApp;
 
 import java.io.IOException;
@@ -18,7 +20,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class GenerateInitialLogsRun {
-    private static final int LOG_COUNT = 100;
+    private static final int LOG_COUNT = 40;
     private static final int THREAD_COUNT = 4;
 
     public static void main(String[] args, boolean polite, String logSuffixID) throws Exception {
@@ -62,6 +64,11 @@ public class GenerateInitialLogsRun {
                     options.randomizeShieldHiddenTargetAndCooldown = config.randomizeShieldHiddenTargetAndCooldown;
                     options.readShieldIdmCooldownTimer = config.readShieldIdmCooldownTimer;
                     options.checkChangeLaneToRearVehicleThreat = config.checkChangeLaneToRearVehicleThreat;
+                    options.decisionMode = config.decisionMode;
+                    options.useInstantProtectedCar = config.useInstantProtectedCar;
+                    options.instantAiDecisionIntervalSeconds = config.instantAiDecisionIntervalSeconds;
+                    options.instantShieldPredictionSeconds = config.instantShieldPredictionSeconds;
+                    options.instantShieldAiActionSeconds = config.instantShieldAiActionSeconds;
                     options.aiProfile = config.aiProfile;
                     options.verifyTimingStats = verifyTimingStats;
 
@@ -88,6 +95,7 @@ public class GenerateInitialLogsRun {
         realWorld.egoCentered = config.egoCentered;
         realWorld.npcVehicleType = config.npcVehicleType;
         realWorld.npcIdmActionStepLength = config.npcIdmActionStepLength;
+        realWorld.npcReactionDelay = config.npcReactionDelay;
         realWorld.idmTimeWanted = config.idmTimeWanted;
         realWorld.populateTraffic(config.populateTargetVehicles, config.populateNumLanes,
                 config.populateMinX, config.populateMaxX, config.polite);
@@ -174,6 +182,11 @@ public class GenerateInitialLogsRun {
                 - dt: %.3f
                 - simulationSeconds: %d
                 - shieldPredictFutureSeconds: %d
+                - decisionMode: `%s`
+                - useInstantProtectedCar: %s
+                - instantAiDecisionIntervalSeconds: %.3f
+                - instantShieldPredictionSeconds: %.3f
+                - instantShieldAiActionSeconds: %.3f
                 - aiProfile: `%s`
                 - realWorldPopulateMethod: `HighwayEngine.populateTraffic(int targetVehicles, int numLanes, double minX, double maxX, boolean polite)`
                 - realWorldPopulateArguments: `targetVehicles=%d, numLanes=%d, minX=%.1f, maxX=%.1f, polite=%s`
@@ -186,6 +199,7 @@ public class GenerateInitialLogsRun {
                 - initialSpawnSafety: rejected and resampled when the initial state is not dynamically safe according to `HighwayEngine.isSpawnDynamicallySafe`
                 - realWorldNpcVehicleType: `%s`
                 - realWorldNpcIdmActionStepLength: %.3f
+                - realWorldNpcReactionDelay: %.3f
                 - realWorldIdmTimeWanted: %.3f
                 - realWorldPolitenessRandomized: %s
                 - starkShieldRadius: vehicles within +/- %.1f meters of EGO are visible to StarkShield
@@ -202,6 +216,11 @@ public class GenerateInitialLogsRun {
                 config.dt,
                 config.timeForSimulationSeconds,
                 config.shieldPredictFutureSeconds,
+                config.decisionMode,
+                config.useInstantProtectedCar,
+                config.instantAiDecisionIntervalSeconds,
+                config.instantShieldPredictionSeconds,
+                config.instantShieldAiActionSeconds,
                 config.aiProfile,
                 config.populateTargetVehicles,
                 config.populateNumLanes,
@@ -212,6 +231,7 @@ public class GenerateInitialLogsRun {
                 config.egoCentered,
                 config.npcVehicleType,
                 config.npcIdmActionStepLength,
+                config.npcReactionDelay,
                 config.idmTimeWanted,
                 config.polite ? "true, NPC politeness is sampled from clipped Gaussian mean=0.5 std=1/6 range=[0,1]"
                         : "false, NPC politeness remains 0.0",
@@ -246,6 +266,11 @@ public class GenerateInitialLogsRun {
         public boolean randomizeShieldHiddenTargetAndCooldown = StarkShieldApp.DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN;
         public boolean readShieldIdmCooldownTimer = StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER;
         public boolean checkChangeLaneToRearVehicleThreat = false;
+        public StarkScenarioRunner.DecisionMode decisionMode = StarkScenarioRunner.DecisionMode.STARK_SHIELD;
+        public boolean useInstantProtectedCar = false;
+        public double instantAiDecisionIntervalSeconds = InstantProtectedControlledVehicle.DEFAULT_AI_DECISION_INTERVAL_SECONDS;
+        public double instantShieldPredictionSeconds = InstantBasedStarkShieldApp.DEFAULT_INSTANT_PREDICTION_SECONDS;
+        public double instantShieldAiActionSeconds = InstantBasedStarkShieldApp.DEFAULT_AI_ACTION_SECONDS;
         public String aiProfile = HighwayAiClient.getConfiguredAiProfile();
         public int populateTargetVehicles = 36;
         public int populateNumLanes = 3;
@@ -257,6 +282,7 @@ public class GenerateInitialLogsRun {
         public boolean enhancedCollisionCheckEnabled = true;
         public HighwayEngine.NpcVehicleType npcVehicleType = HighwayEngine.NpcVehicleType.DEFAULT;
         public double npcIdmActionStepLength = 0.1;
+        public double npcReactionDelay = 0.3;
         public double idmTimeWanted = EngineUtils.DEFAULT_TIME_WANTED;
     }
 }

@@ -39,6 +39,7 @@ public enum VarTable {
     targetSpeed,
     idmCooldownTimer,
     idmActionStepLength,
+    reactionDelay,
 
     role //0forEGO, 1forNPC
 }

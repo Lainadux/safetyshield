@@ -68,11 +68,22 @@ public class RecoverStarkRun {
             options.shieldEgoRangeMeters = parseDoubleConfig(comment, "starkShieldRadius", options.shieldEgoRangeMeters);
             options.checkChangeLaneToRearVehicleThreat = parseBooleanConfig(comment,
                     "checkChangeLaneToRearVehicleThreat", options.checkChangeLaneToRearVehicleThreat);
+            options.decisionMode = parseDecisionModeConfig(comment, "decisionMode", options.decisionMode);
+            options.useInstantProtectedCar = parseBooleanConfig(comment,
+                    "useInstantProtectedCar", options.useInstantProtectedCar);
+            options.instantAiDecisionIntervalSeconds = parseDoubleConfig(comment,
+                    "instantAiDecisionIntervalSeconds", options.instantAiDecisionIntervalSeconds);
+            options.instantShieldPredictionSeconds = parseDoubleConfig(comment,
+                    "instantShieldPredictionSeconds", options.instantShieldPredictionSeconds);
+            options.instantShieldAiActionSeconds = parseDoubleConfig(comment,
+                    "instantShieldAiActionSeconds", options.instantShieldAiActionSeconds);
             options.aiProfile = parseStringConfig(comment, "aiProfile", options.aiProfile);
             realWorld.idmTimeWanted = parseDoubleConfig(comment, "realWorldIdmTimeWanted", realWorld.idmTimeWanted);
             System.out.printf(
-                    "Recovered StarkShield config: aiProfile=%s, idmTimeWanted=%.3f, randomizeHiddenTargetAndCooldown=%s, readIdmCooldownTimer=%s, radius=%.1f, rearThreatCheck=%s%n",
+                    "Recovered StarkShield config: aiProfile=%s, decisionMode=%s, instantProtectedCar=%s, idmTimeWanted=%.3f, randomizeHiddenTargetAndCooldown=%s, readIdmCooldownTimer=%s, radius=%.1f, rearThreatCheck=%s%n",
                     options.aiProfile,
+                    options.decisionMode,
+                    options.useInstantProtectedCar,
                     realWorld.idmTimeWanted,
                     options.randomizeShieldHiddenTargetAndCooldown,
                     options.readShieldIdmCooldownTimer,
@@ -101,5 +112,15 @@ public class RecoverStarkRun {
         Matcher matcher = Pattern.compile("-\\s*" + Pattern.quote(key) + ":\\s*`?([^`\\r\\n]+)`?")
                 .matcher(comment);
         return matcher.find() ? matcher.group(1).trim() : fallback;
+    }
+
+    private static StarkScenarioRunner.DecisionMode parseDecisionModeConfig(
+            String comment, String key, StarkScenarioRunner.DecisionMode fallback) {
+        String value = parseStringConfig(comment, key, fallback.name());
+        try {
+            return StarkScenarioRunner.DecisionMode.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            return fallback;
+        }
     }
 }

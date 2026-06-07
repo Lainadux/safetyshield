@@ -160,6 +160,7 @@ public class Vehicle {
         copy.plannedAcceleration = this.plannedAcceleration;
         copy.plannedSteering = this.plannedSteering;
         copy.targetSpeed = this.targetSpeed;
+        copy.role = this.role;
     }
 
     public Vehicle deepCopySelf() {

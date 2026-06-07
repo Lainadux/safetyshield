@@ -13,7 +13,8 @@ import java.util.Random;
 public class HighwayEngine {
     public enum NpcVehicleType {
         DEFAULT,
-        IDM_COOLDOWN
+        IDM_COOLDOWN,
+        DELAYED_IDM
     }
 
     public boolean egoCentered = false;
@@ -47,6 +48,7 @@ public class HighwayEngine {
     private static final double POLITENESS_STD = 1.0 / 6.0;
     public NpcVehicleType npcVehicleType = NpcVehicleType.DEFAULT;
     public double npcIdmActionStepLength = 0.1;
+    public double npcReactionDelay = 0.3;
     public double idmTimeWanted = EngineUtils.DEFAULT_TIME_WANTED;
     public int numLanes = 3;
 
@@ -373,6 +375,13 @@ public class HighwayEngine {
             IDMCooldownVehicle vehicle = new IDMCooldownVehicle();
             vehicle.idmActionStepLength = npcIdmActionStepLength;
             vehicle.idmCooldownTimer = 0.0;
+            return vehicle;
+        }
+        if (npcVehicleType == NpcVehicleType.DELAYED_IDM) {
+            DelayedIDMVehicle vehicle = new DelayedIDMVehicle();
+            vehicle.idmActionStepLength = npcIdmActionStepLength;
+            vehicle.idmCooldownTimer = 0.0;
+            vehicle.reactionDelay = npcReactionDelay;
             return vehicle;
         }
         return new Vehicle();
