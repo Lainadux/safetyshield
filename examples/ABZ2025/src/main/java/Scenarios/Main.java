@@ -25,17 +25,18 @@ public class Main {
             config.egoCentered = true; // ego starts in the middle lane
             config.polite = false;
 
-            config.npcVehicleType = HighwayEngine.NpcVehicleType.DELAYED_IDM;
+            config.npcVehicleType = HighwayEngine.NpcVehicleType.DEFAULT;
             config.npcIdmActionStepLength = 0;
             config.npcReactionDelay = 0.3;
             config.idmTimeWanted = 1.0;
+
             config.shieldEgoRangeMeters = 200.0;
             config.randomizeShieldHiddenTargetAndCooldown = false;
             config.checkChangeLaneToRearVehicleThreat = true;
             config.readShieldIdmCooldownTimer = false;
 
-            config.decisionMode = StarkScenarioRunner.DecisionMode.INSTANT_BASED_STARK_SHIELD;
-            config.useInstantProtectedCar = true;
+            config.decisionMode = StarkScenarioRunner.DecisionMode.STARK_SHIELD;
+            config.useInstantProtectedCar = false;
             config.instantAiDecisionIntervalSeconds = 0.25;
             config.instantShieldPredictionSeconds = 0.4;
             config.instantShieldAiActionSeconds = 0.1;
