@@ -64,9 +64,11 @@ public class RandomActionCompareTest {
             realWorld.placeEgoAtTrafficMiddle = config.placeEgoAtTrafficMiddle;
             realWorld.egoCentered = config.egoCentered;
             realWorld.npcVehicleType = config.npcVehicleType;
-            realWorld.npcIdmActionStepLength = config.npcIdmActionStepLength;
-            realWorld.npcReactionDelay = config.npcReactionDelay;
-            realWorld.idmTimeWanted = config.idmTimeWanted;
+            if (config.npcVehicleType != HighwayEngine.NpcVehicleType.DEFAULT) {
+                realWorld.npcIdmActionStepLength = config.npcIdmActionStepLength;
+                realWorld.npcReactionDelay = config.npcReactionDelay;
+                realWorld.idmTimeWanted = config.idmTimeWanted;
+            }
             realWorld.populateTraffic(config.populateTargetVehicles, config.populateNumLanes,
                     config.populateMinX, config.populateMaxX, config.polite);
             realWorld.enhancedCollisionCheckEnabled = config.enhancedCollisionCheckEnabled;
@@ -97,7 +99,9 @@ public class RandomActionCompareTest {
                             initialStateFile.toString(),
                             config.dt
                     );
-                    realWorld.idmTimeWanted = config.idmTimeWanted;
+                    if (config.npcVehicleType != HighwayEngine.NpcVehicleType.DEFAULT) {
+                        realWorld.idmTimeWanted = config.idmTimeWanted;
+                    }
 
                     StarkScenarioRunner.RunOptions options = new StarkScenarioRunner.RunOptions();
                     options.decisionMode = decisionMode;
@@ -106,12 +110,18 @@ public class RandomActionCompareTest {
                     options.saveInitialState = false;
                     options.renderEachStep = false;
                     options.rethrowOnCrash = false;
+                    options.continueAfterNpcCollision = config.continueAfterNpcCollision;
                     options.printDiagnostics = false;
                     options.timeForSimulationSeconds = config.timeForSimulationSeconds;
                     options.shieldPredictFutureSeconds = config.shieldPredictFutureSeconds;
                     options.shieldEgoRangeMeters = config.shieldEgoRangeMeters;
                     options.randomizeShieldHiddenTargetAndCooldown = config.randomizeShieldHiddenTargetAndCooldown;
+                    options.shieldHiddenStateRandomSeed = config.shieldHiddenStateRandomSeed;
                     options.readShieldIdmCooldownTimer = config.readShieldIdmCooldownTimer;
+                    options.fixPrediction = config.fixPrediction;
+                    options.aggressiveFinalStability = config.aggressiveFinalStability;
+                    options.finalStabilityPenaltyMode = config.finalStabilityPenaltyMode;
+                    options.enableOvertakeGate = config.enableOvertakeGate;
                     options.checkChangeLaneToRearVehicleThreat = checkChangeLaneToRearVehicleThreat;
                     options.aiProfile = config.aiProfile;
                     options.randomActionSeed = stableSeed(initialStateFile);

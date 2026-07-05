@@ -1,6 +1,7 @@
 package Scenarios;
 
 import Scenarios.Engine.HighwayEngine;
+import Scenarios.Engine.StarkShieldApp;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -46,28 +47,53 @@ public class RecoverStarkRun {
 
     private static void applyLoggedConfiguration(String initialStateFile, HighwayEngine realWorld,
                                                  StarkScenarioRunner.RunOptions options) {
-        Path logPath = Path.of(initialStateFile).getParent();
+        Path initialStatePath = Path.of(initialStateFile);
+        Path metadataPath = Path.of(initialStateFile + ".meta.md");
+        Path logPath = initialStatePath.getParent();
         if (logPath == null) {
             options.randomizeShieldHiddenTargetAndCooldown = false;
             return;
         }
 
         Path commentPath = logPath.resolve("comment.md");
-        if (!Files.exists(commentPath)) {
+        if (!Files.exists(commentPath) && !Files.exists(metadataPath)) {
             options.randomizeShieldHiddenTargetAndCooldown = false;
-            System.out.println("No comment.md found for replay; using passed targetSpeed/cooldown for StarkShield.");
+            System.out.println("No comment.md or replay metadata found; using passed targetSpeed/cooldown for StarkShield.");
             return;
         }
 
         try {
-            String comment = Files.readString(commentPath);
+            String comment = "";
+            if (Files.exists(metadataPath)) {
+                comment += Files.readString(metadataPath) + System.lineSeparator();
+            }
+            if (Files.exists(commentPath)) {
+                comment += Files.readString(commentPath);
+            }
             options.randomizeShieldHiddenTargetAndCooldown = !comment.contains(
                     "starkShieldTargetSpeedSource: passed from real world vehicle state");
+            options.randomizeShieldHiddenTargetAndCooldown = parseBooleanConfig(comment,
+                    "randomizeShieldHiddenTargetAndCooldown", options.randomizeShieldHiddenTargetAndCooldown);
+            options.shieldHiddenStateRandomSeed = parseLongConfig(comment,
+                    "shieldHiddenStateRandomSeed", options.shieldHiddenStateRandomSeed);
+            if (options.randomizeShieldHiddenTargetAndCooldown && options.shieldHiddenStateRandomSeed == null) {
+                System.out.println("Warning: StarkShield hidden target/cooldown is randomized but no shieldHiddenStateRandomSeed was logged; replay will not be deterministic.");
+            }
             options.readShieldIdmCooldownTimer = !comment.contains(
                     "starkShieldIdmCooldownTimerSource: randomized");
             options.shieldEgoRangeMeters = parseDoubleConfig(comment, "starkShieldRadius", options.shieldEgoRangeMeters);
             options.checkChangeLaneToRearVehicleThreat = parseBooleanConfig(comment,
                     "checkChangeLaneToRearVehicleThreat", options.checkChangeLaneToRearVehicleThreat);
+            options.fixPrediction = parseBooleanConfig(comment,
+                    "fixPrediction", options.fixPrediction);
+            options.aggressiveFinalStability = parseBooleanConfig(comment,
+                    "aggressiveFinalStability", options.aggressiveFinalStability);
+            options.finalStabilityPenaltyMode = parseFinalStabilityPenaltyModeConfig(comment,
+                    "finalStabilityPenaltyMode", options.finalStabilityPenaltyMode);
+            options.enableOvertakeGate = parseBooleanConfig(comment,
+                    "enableOvertakeGate", options.enableOvertakeGate);
+            options.continueAfterNpcCollision = parseBooleanConfig(comment,
+                    "continueAfterNpcCollision", options.continueAfterNpcCollision);
             options.decisionMode = parseDecisionModeConfig(comment, "decisionMode", options.decisionMode);
             options.useInstantProtectedCar = parseBooleanConfig(comment,
                     "useInstantProtectedCar", options.useInstantProtectedCar);
@@ -78,17 +104,27 @@ public class RecoverStarkRun {
             options.instantShieldAiActionSeconds = parseDoubleConfig(comment,
                     "instantShieldAiActionSeconds", options.instantShieldAiActionSeconds);
             options.aiProfile = parseStringConfig(comment, "aiProfile", options.aiProfile);
-            realWorld.idmTimeWanted = parseDoubleConfig(comment, "realWorldIdmTimeWanted", realWorld.idmTimeWanted);
+            String npcVehicleType = parseStringConfig(comment, "realWorldNpcVehicleType", "DEFAULT");
+            if (!"DEFAULT".equals(npcVehicleType)) {
+                realWorld.idmTimeWanted = parseDoubleConfig(comment, "realWorldIdmTimeWanted", realWorld.idmTimeWanted);
+            }
             System.out.printf(
-                    "Recovered StarkShield config: aiProfile=%s, decisionMode=%s, instantProtectedCar=%s, idmTimeWanted=%.3f, randomizeHiddenTargetAndCooldown=%s, readIdmCooldownTimer=%s, radius=%.1f, rearThreatCheck=%s%n",
+                    "Recovered StarkShield config: aiProfile=%s, decisionMode=%s, instantProtectedCar=%s, npcVehicleType=%s, idmTimeWanted=%.3f, randomizeHiddenTargetAndCooldown=%s, shieldHiddenStateRandomSeed=%s, readIdmCooldownTimer=%s, fixPrediction=%s, aggressiveFinalStability=%s, finalStabilityPenaltyMode=%s, enableOvertakeGate=%s, radius=%.1f, rearThreatCheck=%s, continueAfterNpcCollision=%s%n",
                     options.aiProfile,
                     options.decisionMode,
                     options.useInstantProtectedCar,
+                    npcVehicleType,
                     realWorld.idmTimeWanted,
                     options.randomizeShieldHiddenTargetAndCooldown,
+                    options.shieldHiddenStateRandomSeed,
                     options.readShieldIdmCooldownTimer,
+                    options.fixPrediction,
+                    options.aggressiveFinalStability,
+                    options.finalStabilityPenaltyMode,
+                    options.enableOvertakeGate,
                     options.shieldEgoRangeMeters,
-                    options.checkChangeLaneToRearVehicleThreat
+                    options.checkChangeLaneToRearVehicleThreat,
+                    options.continueAfterNpcCollision
             );
         } catch (IOException e) {
             options.randomizeShieldHiddenTargetAndCooldown = false;
@@ -108,6 +144,12 @@ public class RecoverStarkRun {
         return matcher.find() ? Boolean.parseBoolean(matcher.group(1)) : fallback;
     }
 
+    private static Long parseLongConfig(String comment, String key, Long fallback) {
+        Matcher matcher = Pattern.compile("-\\s*" + Pattern.quote(key) + ":\\s*(-?\\d+)")
+                .matcher(comment);
+        return matcher.find() ? Long.parseLong(matcher.group(1)) : fallback;
+    }
+
     private static String parseStringConfig(String comment, String key, String fallback) {
         Matcher matcher = Pattern.compile("-\\s*" + Pattern.quote(key) + ":\\s*`?([^`\\r\\n]+)`?")
                 .matcher(comment);
@@ -119,6 +161,16 @@ public class RecoverStarkRun {
         String value = parseStringConfig(comment, key, fallback.name());
         try {
             return StarkScenarioRunner.DecisionMode.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            return fallback;
+        }
+    }
+
+    private static StarkShieldApp.FinalStabilityPenaltyMode parseFinalStabilityPenaltyModeConfig(
+            String comment, String key, StarkShieldApp.FinalStabilityPenaltyMode fallback) {
+        String value = parseStringConfig(comment, key, fallback.name());
+        try {
+            return StarkShieldApp.FinalStabilityPenaltyMode.valueOf(value);
         } catch (IllegalArgumentException e) {
             return fallback;
         }

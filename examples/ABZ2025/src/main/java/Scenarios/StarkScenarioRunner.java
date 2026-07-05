@@ -5,6 +5,7 @@ import Scenarios.Engine.HighwayAiClient;
 import Scenarios.Engine.HighwayEngine;
 import Scenarios.Engine.InstantBasedStarkShieldApp;
 import Scenarios.Engine.InstantProtectedControlledVehicle;
+import Scenarios.Engine.OvertakeGateStarkShieldApp;
 import Scenarios.Engine.ProtectedControlledVehicle;
 import Scenarios.Engine.StarkShieldApp;
 import Scenarios.Engine.StateSaver;
@@ -14,17 +15,23 @@ import java.awt.KeyEventDispatcher;
 import java.awt.KeyboardFocusManager;
 import java.awt.event.KeyEvent;
 import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.JOptionPane;
 
 public final class StarkScenarioRunner {
-    public static final double DEFAULT_DT = 0.02;
+    public static final double DEFAULT_DT = 0.05;
     public static final int DEFAULT_TIME_FOR_SIMULATION_SECONDS = 40;
     public static final String DEFAULT_LOG_DIR = "examples/ABZ2025/src/main/java/Scenarios/logs4";
 
@@ -64,6 +71,7 @@ public final class StarkScenarioRunner {
 
     public static RunResult runScenario(HighwayEngine realWorld, RunOptions options) throws Exception {
         double dt = realWorld.dt;
+        realWorld.continueAfterNpcCollision = options.continueAfterNpcCollision;
         ProtectedControlledVehicle protectedControlledVehicle = ensureProtectedEgo(realWorld, options);
         List<Vehicle> initialScenario = deepCopyVehicles(realWorld.vehicles);
         Random randomActionGenerator = options.randomActionSeed == null
@@ -75,8 +83,10 @@ public final class StarkScenarioRunner {
 
         boolean crashed = false;
         boolean initialScenarioSaved = false;
+        Map<String, Double> previousDecisionSpeedByVehicleId = new HashMap<>();
         double prevTgtspd = 0.0;
         int prevCurrentLane = 0;
+        long shieldDecisionIndex = 0;
         long lastStep = (long) options.timeForSimulationSeconds * realWorld.STEPS_PER_SECOND - 1;
 
         try {
@@ -108,10 +118,12 @@ public final class StarkScenarioRunner {
 
                 if (isDecisionStep(realWorld, protectedControlledVehicle, options)) {
                     StarkShieldApp starkShieldApp = null;
+                    StarkShieldApp overtakeGateShieldApp = null;
                     boolean isSafe;
                     if (options.decisionMode == DecisionMode.STARK_SHIELD
                             || options.decisionMode == DecisionMode.INSTANT_BASED_STARK_SHIELD) {
-                        List<Vehicle> shieldVehicles = buildShieldVehicles(realWorld.vehicles);
+                        Long hiddenStateSeed = hiddenStateSeedForDecision(options, shieldDecisionIndex);
+                        List<Vehicle> shieldVehicles = buildShieldVehicles(realWorld.vehicles, previousDecisionSpeedByVehicleId);
                         HighwayEngine shieldEngine = new HighwayEngine(dt, true, true, shieldVehicles);
                         shieldEngine.idmTimeWanted = realWorld.idmTimeWanted;
                         if (options.decisionMode == DecisionMode.INSTANT_BASED_STARK_SHIELD) {
@@ -123,18 +135,43 @@ public final class StarkScenarioRunner {
                                     options.randomizeShieldHiddenTargetAndCooldown,
                                     options.checkChangeLaneToRearVehicleThreat,
                                     options.readShieldIdmCooldownTimer,
+                                    options.fixPrediction,
+                                    options.aggressiveFinalStability,
+                                    options.finalStabilityPenaltyMode,
                                     options.instantShieldPredictionSeconds,
-                                    options.instantShieldAiActionSeconds);
+                                    options.instantShieldAiActionSeconds,
+                                    hiddenStateSeed);
                         } else {
                             starkShieldApp = shieldEngine.createStarkShieldApp(
                                     options.shieldPredictFutureSeconds,
                                     options.shieldEgoRangeMeters,
                                     options.randomizeShieldHiddenTargetAndCooldown,
                                     options.checkChangeLaneToRearVehicleThreat,
-                                    options.readShieldIdmCooldownTimer);
+                                    options.readShieldIdmCooldownTimer,
+                                    options.fixPrediction,
+                                    options.aggressiveFinalStability,
+                                    options.finalStabilityPenaltyMode,
+                                    hiddenStateSeed);
                         }
                         long verifyStartNanos = System.nanoTime();
                         isSafe = starkShieldApp.verifySafe();
+                        if (!isSafe && options.enableOvertakeGate
+                                && options.decisionMode == DecisionMode.STARK_SHIELD) {
+                            overtakeGateShieldApp = new OvertakeGateStarkShieldApp(
+                                    shieldEngine,
+                                    shieldEngine.vehicles,
+                                    options.shieldPredictFutureSeconds,
+                                    options.shieldEgoRangeMeters,
+                                    options.randomizeShieldHiddenTargetAndCooldown,
+                                    options.checkChangeLaneToRearVehicleThreat,
+                                    options.readShieldIdmCooldownTimer,
+                                    options.fixPrediction,
+                                    options.aggressiveFinalStability,
+                                    options.finalStabilityPenaltyMode,
+                                    hiddenStateSeed);
+                            isSafe = overtakeGateShieldApp.verifySafe();
+                        }
+                        shieldDecisionIndex++;
                         long verifyElapsedNanos = System.nanoTime() - verifyStartNanos;
                         if (options.verifyTimingStats != null) {
                             options.verifyTimingStats.record(verifyElapsedNanos, !isSafe, protectedControlledVehicle.speed);
@@ -151,6 +188,10 @@ public final class StarkScenarioRunner {
                                 isSafe ? "Safe" : "Unsafe", decision.action, decision.action_name);
                         if (starkShieldApp != null) {
                             System.out.println(starkShieldApp.getUnsafeDiagnosis());
+                            if (overtakeGateShieldApp != null) {
+                                System.out.println("Overtake gate diagnosis:");
+                                System.out.println(overtakeGateShieldApp.getUnsafeDiagnosis());
+                            }
                         }
                     }
 
@@ -166,6 +207,7 @@ public final class StarkScenarioRunner {
                     if (options.pauseAfterShieldDecision) {
                         waitForSpaceToContinue(realWorld, starkShieldApp, options);
                     }
+                    updatePreviousDecisionSpeeds(realWorld.vehicles, previousDecisionSpeedByVehicleId);
                 }
 
                 realWorld.step();
@@ -176,7 +218,7 @@ public final class StarkScenarioRunner {
         } catch (RuntimeException e) {
             crashed = true;
             if (options.saveInitialState) {
-                saveInitialScenarioSnapshot(initialScenario, true, options.logDir);
+                saveInitialScenarioSnapshot(initialScenario, true, options);
             }
             initialScenarioSaved = true;
             if (options.rethrowOnCrash) {
@@ -186,7 +228,7 @@ public final class StarkScenarioRunner {
         } finally {
             HighwayAiClient.setThreadAiProfile(null);
             if (options.saveInitialState && !initialScenarioSaved) {
-                saveInitialScenarioSnapshot(initialScenario, crashed, options.logDir);
+                saveInitialScenarioSnapshot(initialScenario, crashed, options);
             }
         }
 
@@ -267,18 +309,37 @@ public final class StarkScenarioRunner {
         return protectedControlledVehicle;
     }
 
-    private static List<Vehicle> buildShieldVehicles(List<Vehicle> realWorldVehicles) {
+    private static List<Vehicle> buildShieldVehicles(List<Vehicle> realWorldVehicles,
+                                                     Map<String, Double> previousDecisionSpeedByVehicleId) {
         List<Vehicle> vehicles = new ArrayList<>();
         for (Vehicle v : realWorldVehicles) {
+            Vehicle copy;
             if (v instanceof ControlledVehicle) {
                 ControlledVehicle cv = v.deepCopySelf().ascendAsControlledVehicle();
                 cv.simulated = true;
-                vehicles.add(cv);
+                copy = cv;
             } else {
-                vehicles.add(v.deepCopySelf());
+                copy = v.deepCopySelf();
             }
+            copy.previousSecondSpeed = previousDecisionSpeedByVehicleId.getOrDefault(copy.id, Double.NaN);
+            vehicles.add(copy);
         }
         return vehicles;
+    }
+
+    private static void updatePreviousDecisionSpeeds(List<Vehicle> vehicles,
+                                                     Map<String, Double> previousDecisionSpeedByVehicleId) {
+        previousDecisionSpeedByVehicleId.clear();
+        for (Vehicle vehicle : vehicles) {
+            previousDecisionSpeedByVehicleId.put(vehicle.id, vehicle.speed);
+        }
+    }
+
+    private static Long hiddenStateSeedForDecision(RunOptions options, long shieldDecisionIndex) {
+        if (options.shieldHiddenStateRandomSeed == null) {
+            return null;
+        }
+        return options.shieldHiddenStateRandomSeed + shieldDecisionIndex;
     }
 
     private static List<Vehicle> deepCopyVehicles(List<Vehicle> vehicles) {
@@ -297,11 +358,34 @@ public final class StarkScenarioRunner {
         return copies;
     }
 
-    private static void saveInitialScenarioSnapshot(List<Vehicle> initialScenario, boolean crashed, String logDir) {
+    private static void saveInitialScenarioSnapshot(List<Vehicle> initialScenario, boolean crashed, RunOptions options) {
         String prefix = crashed ? "crash_initial_" : "safe_initial_";
         String timestamp = LocalDateTime.now().format(STATE_TIME_FORMAT);
         int sequence = SAVED_STATE_SEQUENCE.incrementAndGet();
-        StateSaver.saveState(initialScenario, logDir + File.separator + prefix + timestamp + "_" + sequence + ".json");
+        String stateFile = options.logDir + File.separator + prefix + timestamp + "_" + sequence + ".json";
+        StateSaver.saveState(initialScenario, stateFile);
+        saveInitialScenarioMetadata(stateFile, options);
+    }
+
+    private static void saveInitialScenarioMetadata(String stateFile, RunOptions options) {
+        Path metadataPath = Path.of(stateFile + ".meta.md");
+        String metadata = String.format("""
+                # Initial State Replay Metadata
+
+                - shieldHiddenStateRandomSeed: %s
+                - randomizeShieldHiddenTargetAndCooldown: %s
+                - randomActionSeed: %s
+                - probabilityRejectionSeed: %s
+                """,
+                options.shieldHiddenStateRandomSeed,
+                options.randomizeShieldHiddenTargetAndCooldown,
+                options.randomActionSeed,
+                options.probabilityRejectionSeed);
+        try {
+            Files.writeString(metadataPath, metadata);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to save replay metadata: " + metadataPath, e);
+        }
     }
 
     private static void waitForSpaceToContinue(HighwayEngine engine, StarkShieldApp starkShieldApp, RunOptions options) throws InterruptedException {
@@ -350,12 +434,19 @@ public final class StarkScenarioRunner {
         public boolean saveInitialState = true;
         public boolean renderEachStep = true;
         public boolean rethrowOnCrash = true;
+        public boolean continueAfterNpcCollision = false;
         public boolean printDiagnostics = true;
         public int timeForSimulationSeconds = DEFAULT_TIME_FOR_SIMULATION_SECONDS;
         public int shieldPredictFutureSeconds = 3;
         public double shieldEgoRangeMeters = StarkShieldApp.DEFAULT_SHIELD_EGO_RANGE_METERS;
         public boolean randomizeShieldHiddenTargetAndCooldown = StarkShieldApp.DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN;
+        public Long shieldHiddenStateRandomSeed = null;
         public boolean readShieldIdmCooldownTimer = StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER;
+        public boolean fixPrediction = StarkShieldApp.DEFAULT_FIX_PREDICTION;
+        public boolean aggressiveFinalStability = StarkShieldApp.DEFAULT_AGGRESSIVE_FINAL_STABILITY;
+        public StarkShieldApp.FinalStabilityPenaltyMode finalStabilityPenaltyMode =
+                StarkShieldApp.DEFAULT_FINAL_STABILITY_PENALTY_MODE;
+        public boolean enableOvertakeGate = false;
         public boolean checkChangeLaneToRearVehicleThreat = false;
         public boolean useInstantProtectedCar = false;
         public double instantAiDecisionIntervalSeconds = InstantProtectedControlledVehicle.DEFAULT_AI_DECISION_INTERVAL_SECONDS;

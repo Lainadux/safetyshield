@@ -34,9 +34,43 @@ public class InstantBasedStarkShieldApp extends StarkShieldApp {
                                       boolean readShieldIdmCooldownTimer,
                                       double instantPredictionSeconds,
                                       double aiActionSeconds) {
+        this(engine, vehicles, predictFutureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer, StarkShieldApp.DEFAULT_FIX_PREDICTION,
+                StarkShieldApp.DEFAULT_AGGRESSIVE_FINAL_STABILITY,
+                StarkShieldApp.DEFAULT_FINAL_STABILITY_PENALTY_MODE,
+                instantPredictionSeconds, aiActionSeconds, null);
+    }
+
+    public InstantBasedStarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
+                                      double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown,
+                                      boolean checkChangeLaneToRearVehicleThreat,
+                                      boolean readShieldIdmCooldownTimer,
+                                      boolean fixPrediction,
+                                      boolean aggressiveFinalStability,
+                                      FinalStabilityPenaltyMode finalStabilityPenaltyMode,
+                                      double instantPredictionSeconds,
+                                      double aiActionSeconds) {
+        this(engine, vehicles, predictFutureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer, fixPrediction, aggressiveFinalStability,
+                finalStabilityPenaltyMode, instantPredictionSeconds, aiActionSeconds, null);
+    }
+
+    public InstantBasedStarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
+                                      double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown,
+                                      boolean checkChangeLaneToRearVehicleThreat,
+                                      boolean readShieldIdmCooldownTimer,
+                                      boolean fixPrediction,
+                                      boolean aggressiveFinalStability,
+                                      FinalStabilityPenaltyMode finalStabilityPenaltyMode,
+                                      double instantPredictionSeconds,
+                                      double aiActionSeconds,
+                                      Long hiddenStateRandomSeed) {
         super(engine, vehicles, predictFutureSeconds, shieldEgoRangeMeters,
                 randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
-                readShieldIdmCooldownTimer);
+                readShieldIdmCooldownTimer, fixPrediction, aggressiveFinalStability,
+                finalStabilityPenaltyMode, hiddenStateRandomSeed);
         this.instantPredictionSeconds = instantPredictionSeconds;
         this.aiActionSeconds = aiActionSeconds;
         this.predictionStepCountOverride = Math.max(1, (int) Math.ceil(instantPredictionSeconds / this.dt));

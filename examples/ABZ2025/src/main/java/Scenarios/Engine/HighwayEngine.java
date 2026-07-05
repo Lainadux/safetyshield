@@ -22,6 +22,7 @@ public class HighwayEngine {
     public boolean saveInitStateAnyWay = false;
     public boolean requireRender = true;
     public boolean requireCollisionLog = false;
+    public boolean continueAfterNpcCollision = false;
     public List<Vehicle> initialVehiclesStates = new ArrayList<>();
     public boolean enhancedCollisionCheckEnabled =false;
     public List<Vehicle> vehicles = new ArrayList<>();
@@ -243,10 +244,6 @@ public class HighwayEngine {
             }
 
 
-            v.x = minX + (maxX - minX) * rand.nextDouble();
-            if(v.role.equals("EGO")){
-                v.x = placeEgoAtTrafficMiddle ? (minX + maxX) / 2.0 : 0;
-            }
             v.y = yCenter;
            // v.lane_index = lane;
             //v.target_lane_index = lane;
@@ -259,22 +256,25 @@ public class HighwayEngine {
             }
             v.cooldownTimer = rand.nextDouble() * 1;
 
-            double speed = 20.0 + rand.nextGaussian() * 3.0;
+            double speed = 21.0 + rand.nextDouble() * 3.0;
 
 
-            v.speed = Math.max(10.0, Math.min(30.0, speed));
+            v.speed = speed;
+            if (v.role.equals("EGO")) {
+                v.speed = 25;
+            }
+            v.x = "EGO".equals(v.role) ? 0.0 : nextPythonStyleNpcX(rand, v.speed);
             if(egoCentered && v.role.equals("EGO")){
                 lane = numLanes/2;
                 v.y = lane * LANE_WIDTH;
                 v.setLaneIndex(lane);
                 v.setTargetLaneIndex(lane);
-                v.speed = 25;
             }
 
             v.vx = v.speed;
             v.vy = 0.0;
 
-            v.targetSpeed = v.speed + rand.nextDouble() * 5.0;
+            v.targetSpeed = v.speed;
 
             if (!isSpawnDynamicallySafe(v)) {
                 continue;
@@ -327,7 +327,6 @@ public class HighwayEngine {
             }
 
 
-            v.x = minX + (maxX - minX) * rand.nextDouble();
             v.y = yCenter;
             // v.lane_index = lane;
             //v.target_lane_index = lane;
@@ -337,22 +336,25 @@ public class HighwayEngine {
             v.id = ""+spawned;
             v.cooldownTimer = rand.nextDouble() * 1;
 
-            double speed = 20.0 + rand.nextGaussian() * 3.0;
+            double speed = 21.0 + rand.nextDouble() * 3.0;
 
 
-            v.speed = Math.max(10.0, Math.min(30.0, speed));
+            v.speed = speed;
+            if (v.role.equals("EGO")) {
+                v.speed = 25;
+            }
+            v.x = "EGO".equals(v.role) ? 0.0 : nextPythonStyleNpcX(rand, v.speed);
             if(egoCentered && v.role.equals("EGO")){
                 lane = numLanes/2;
                 v.y = lane * LANE_WIDTH;
                 v.setLaneIndex(lane);
                 v.setTargetLaneIndex(lane);
-                v.speed = 25;
             }
 
             v.vx = v.speed;
             v.vy = 0.0;
 
-            v.targetSpeed = v.speed + rand.nextDouble() * 5.0;
+            v.targetSpeed = v.speed;
 
             if (!isSpawnDynamicallySafe(v)) {
                 continue;
@@ -368,6 +370,21 @@ public class HighwayEngine {
         }
 
 
+    }
+
+    private double nextPythonStyleNpcX(Random rand, double speed) {
+        double defaultSpacing = 12.0 + speed;
+        double offset = defaultSpacing * Math.exp(-5.0 / 40.0 * this.numLanes);
+        double x0 = this.vehicles.isEmpty() ? 3.0 * offset : maxVehicleX();
+        return x0 + offset * (0.9 + 0.2 * rand.nextDouble());
+    }
+
+    private double maxVehicleX() {
+        double maxX = Double.NEGATIVE_INFINITY;
+        for (Vehicle vehicle : this.vehicles) {
+            maxX = Math.max(maxX, vehicle.x);
+        }
+        return maxX;
     }
 
     private Vehicle createNpcVehicle() {
@@ -658,6 +675,9 @@ public class HighwayEngine {
                 boolean overlapY = dy < (2.0 / 2.0 + 2.0 / 2.0); // 鍋囪 WIDTH 鏄?2.0
 
                 if (overlapX && overlapY) {
+                    if (continueAfterNpcCollision && !isEgoInvolved(v1, v2)) {
+                        continue;
+                    }
 
                     String crashMsg = String.format(
                             "馃挜 鑷村懡鐗╃悊纰版挒妫€娴嬭Е鍙戯紒\n" +
@@ -675,6 +695,14 @@ public class HighwayEngine {
                 }
             }
         }
+    }
+
+    private boolean isEgoInvolved(Vehicle v1, Vehicle v2) {
+        return isEgoVehicle(v1) || isEgoVehicle(v2);
+    }
+
+    private boolean isEgoVehicle(Vehicle vehicle) {
+        return vehicle instanceof ControlledVehicle || "EGO".equals(vehicle.role);
     }
 
     public StarkShieldApp createStarkShieldApp(int futureSeconds) {
@@ -703,6 +731,29 @@ public class HighwayEngine {
                                                boolean randomizeHiddenTargetAndCooldown,
                                                boolean checkChangeLaneToRearVehicleThreat,
                                                boolean readShieldIdmCooldownTimer) {
+        return createStarkShieldApp(futureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer, StarkShieldApp.DEFAULT_FIX_PREDICTION,
+                StarkShieldApp.DEFAULT_AGGRESSIVE_FINAL_STABILITY);
+    }
+
+    public StarkShieldApp createStarkShieldApp(int futureSeconds, double shieldEgoRangeMeters,
+                                               boolean randomizeHiddenTargetAndCooldown,
+                                               boolean checkChangeLaneToRearVehicleThreat,
+                                               boolean readShieldIdmCooldownTimer,
+                                               boolean fixPrediction) {
+        return createStarkShieldApp(futureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer, fixPrediction,
+                StarkShieldApp.DEFAULT_AGGRESSIVE_FINAL_STABILITY);
+    }
+
+    public StarkShieldApp createStarkShieldApp(int futureSeconds, double shieldEgoRangeMeters,
+                                               boolean randomizeHiddenTargetAndCooldown,
+                                               boolean checkChangeLaneToRearVehicleThreat,
+                                               boolean readShieldIdmCooldownTimer,
+                                               boolean fixPrediction,
+                                               boolean aggressiveFinalStability) {
         if(this.vehicles == null || this.vehicles.isEmpty()) {
             throw new IllegalStateException("Engine must have vehicles to create StarkShieldApp");
         }
@@ -710,7 +761,58 @@ public class HighwayEngine {
         return new StarkShieldApp(this, this.vehicles, futureSeconds,
                 shieldEgoRangeMeters, randomizeHiddenTargetAndCooldown,
                 checkChangeLaneToRearVehicleThreat,
-                readShieldIdmCooldownTimer);
+                readShieldIdmCooldownTimer,
+                fixPrediction,
+                aggressiveFinalStability,
+                StarkShieldApp.DEFAULT_FINAL_STABILITY_PENALTY_MODE);
+    }
+
+    public StarkShieldApp createStarkShieldApp(int futureSeconds, double shieldEgoRangeMeters,
+                                               boolean randomizeHiddenTargetAndCooldown,
+                                               boolean checkChangeLaneToRearVehicleThreat,
+                                               boolean readShieldIdmCooldownTimer,
+                                               boolean fixPrediction,
+                                               StarkShieldApp.FinalStabilityPenaltyMode finalStabilityPenaltyMode) {
+        return createStarkShieldApp(futureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer, fixPrediction,
+                StarkShieldApp.DEFAULT_AGGRESSIVE_FINAL_STABILITY,
+                finalStabilityPenaltyMode);
+    }
+
+    public StarkShieldApp createStarkShieldApp(int futureSeconds, double shieldEgoRangeMeters,
+                                               boolean randomizeHiddenTargetAndCooldown,
+                                               boolean checkChangeLaneToRearVehicleThreat,
+                                               boolean readShieldIdmCooldownTimer,
+                                               boolean fixPrediction,
+                                               boolean aggressiveFinalStability,
+                                               StarkShieldApp.FinalStabilityPenaltyMode finalStabilityPenaltyMode) {
+        return createStarkShieldApp(futureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer, fixPrediction, aggressiveFinalStability,
+                finalStabilityPenaltyMode, null);
+    }
+
+    public StarkShieldApp createStarkShieldApp(int futureSeconds, double shieldEgoRangeMeters,
+                                               boolean randomizeHiddenTargetAndCooldown,
+                                               boolean checkChangeLaneToRearVehicleThreat,
+                                               boolean readShieldIdmCooldownTimer,
+                                               boolean fixPrediction,
+                                               boolean aggressiveFinalStability,
+                                               StarkShieldApp.FinalStabilityPenaltyMode finalStabilityPenaltyMode,
+                                               Long hiddenStateRandomSeed) {
+        if(this.vehicles == null || this.vehicles.isEmpty()) {
+            throw new IllegalStateException("Engine must have vehicles to create StarkShieldApp");
+        }
+
+        return new StarkShieldApp(this, this.vehicles, futureSeconds,
+                shieldEgoRangeMeters, randomizeHiddenTargetAndCooldown,
+                checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer,
+                fixPrediction,
+                aggressiveFinalStability,
+                finalStabilityPenaltyMode,
+                hiddenStateRandomSeed);
     }
 
 

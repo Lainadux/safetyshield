@@ -57,6 +57,8 @@ public class StarkShieldApp {
     private static final double MIN_CLOSE_FRONT_GAP = 10.0;
     private static final double MAX_STABLE_RELATIVE_SPEED = 2.0;
     private static final double SAFE_RECEDING_RELATIVE_SPEED = 2.0;
+    private static final double BRAKING_AWARE_FRONT_RESPONSE_TIME = 1.0;
+    private static final double BRAKING_AWARE_FRONT_MAX_BRAKE = 3.0;
     private static final double FIRST_SECOND_SAFETY_DISTANCE_THRESHOLD = 0.1;
     private static final double CHANGE_LANE_REAR_THREAT_DISTANCE_THRESHOLD = 0.1;
     private static final double CHANGE_LANE_LOW_SPEED_DISTANCE_THRESHOLD = 0.1;
@@ -68,18 +70,30 @@ public class StarkShieldApp {
     private static final double MIN_FRONT_ACCELERATION_UNCERTAINTY = 0.5;
     private static final double MAX_FRONT_ACCELERATION_UNCERTAINTY = 5.0;
     private static final double FRONT_ACCELERATION_UNCERTAINTY_GAIN = 1.0;
-    private static final double RANDOM_TARGET_SPEED_MEAN = 30.0;
-    private static final double RANDOM_TARGET_SPEED_STD = 10.0 / 3.0;
+    private static final double RANDOM_TARGET_SPEED_MEAN = 25.0;
+    private static final double RANDOM_TARGET_SPEED_STD = 5.0 / 3.0;
     private static final double RANDOM_TARGET_SPEED_MIN = 20.0;
-    private static final double RANDOM_TARGET_SPEED_MAX = 40.0;
+    private static final double RANDOM_TARGET_SPEED_MAX = 30.0;
     private static final double RANDOM_COOLDOWN_MEAN = 0.5;
     private static final double RANDOM_COOLDOWN_STD = 1.0 / 6.0;
     private static final double RANDOM_COOLDOWN_MIN = 0.0;
     private static final double RANDOM_COOLDOWN_MAX = 1.0;
+    private static final double FIXED_PREDICTION_SPEED_DIFF_THRESHOLD = 0.5;
+    private static final double FIXED_PREDICTION_TARGET_GAIN = 0.5;
+    private static final double FIXED_PREDICTION_MAX_TARGET_DELTA = 2.0;
+    private static final long EVOLUTION_SEQUENCE_SEED_OFFSET = 0x5DEECE66DL;
+    private static final long DISTL_SEMANTICS_SEED_OFFSET = 0x9E3779B97F4A7C15L;
     public static final double DEFAULT_SHIELD_EGO_RANGE_METERS = 200.0;
     public static final boolean DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN = true;
     public static final boolean DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER = true;
-    protected static final int EVOLUTION_SEQUENCE_SIZE = 10;
+    public static final boolean DEFAULT_FIX_PREDICTION = false;
+    public static final boolean DEFAULT_AGGRESSIVE_FINAL_STABILITY = false;
+    public enum FinalStabilityPenaltyMode {
+        DEFAULT,
+        BRAKING_AWARE_GAP
+    }
+    public static final FinalStabilityPenaltyMode DEFAULT_FINAL_STABILITY_PENALTY_MODE = FinalStabilityPenaltyMode.DEFAULT;
+    protected static final int EVOLUTION_SEQUENCE_SIZE = 30;
     //public int stepCount = 0;
     protected List<Vehicle> finalVehicles;
 
@@ -101,13 +115,17 @@ public class StarkShieldApp {
     protected List<Vehicle> filteredVehicles;
     private Map<String, Double> observedAccelerationByVehicleId = new HashMap<>();
     private Map<String, Double> frontAccelerationUncertaintyByVehicleId = new ConcurrentHashMap<>();
-    private final Random hiddenStateRandom = new Random();
+    private final Random hiddenStateRandom;
     private final double shieldEgoRangeMeters;
     private final boolean randomizeHiddenTargetAndCooldown;
     private final boolean checkChangeLaneToRearVehicleThreat;
     private final boolean npcUsesIdmCooldown;
     private final boolean npcUsesDelayedIdm;
     private final boolean readShieldIdmCooldownTimer;
+    private final boolean fixPrediction;
+    private final boolean aggressiveFinalStability;
+    private final FinalStabilityPenaltyMode finalStabilityPenaltyMode;
+    private final Long replayRandomSeed;
     protected int predictionStepCountOverride = -1;
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds) {
@@ -115,14 +133,22 @@ public class StarkShieldApp {
                 DEFAULT_SHIELD_EGO_RANGE_METERS,
                 DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN,
                 false,
-                DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER);
+                DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER,
+                DEFAULT_FIX_PREDICTION,
+                DEFAULT_AGGRESSIVE_FINAL_STABILITY,
+                DEFAULT_FINAL_STABILITY_PENALTY_MODE,
+                null);
     }
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
                           double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown) {
         this(engine, vehicles, predictFutureSeconds,
                 shieldEgoRangeMeters, randomizeHiddenTargetAndCooldown, false,
-                DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER);
+                DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER,
+                DEFAULT_FIX_PREDICTION,
+                DEFAULT_AGGRESSIVE_FINAL_STABILITY,
+                DEFAULT_FINAL_STABILITY_PENALTY_MODE,
+                null);
     }
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
@@ -130,13 +156,59 @@ public class StarkShieldApp {
                           boolean checkChangeLaneToRearVehicleThreat) {
         this(engine, vehicles, predictFutureSeconds, shieldEgoRangeMeters,
                 randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
-                DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER);
+                DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER,
+                DEFAULT_FIX_PREDICTION,
+                DEFAULT_AGGRESSIVE_FINAL_STABILITY,
+                DEFAULT_FINAL_STABILITY_PENALTY_MODE,
+                null);
     }
 
     public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
                           double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown,
                           boolean checkChangeLaneToRearVehicleThreat,
                           boolean readShieldIdmCooldownTimer) {
+        this(engine, vehicles, predictFutureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer, DEFAULT_FIX_PREDICTION,
+                DEFAULT_AGGRESSIVE_FINAL_STABILITY,
+                DEFAULT_FINAL_STABILITY_PENALTY_MODE,
+                null);
+    }
+
+    public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
+                          double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown,
+                          boolean checkChangeLaneToRearVehicleThreat,
+                          boolean readShieldIdmCooldownTimer,
+                          boolean fixPrediction) {
+        this(engine, vehicles, predictFutureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer, fixPrediction,
+                DEFAULT_AGGRESSIVE_FINAL_STABILITY,
+                DEFAULT_FINAL_STABILITY_PENALTY_MODE,
+                null);
+    }
+
+    public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
+                          double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown,
+                          boolean checkChangeLaneToRearVehicleThreat,
+                          boolean readShieldIdmCooldownTimer,
+                          boolean fixPrediction,
+                          boolean aggressiveFinalStability,
+                          FinalStabilityPenaltyMode finalStabilityPenaltyMode) {
+        this(engine, vehicles, predictFutureSeconds, shieldEgoRangeMeters,
+                randomizeHiddenTargetAndCooldown, checkChangeLaneToRearVehicleThreat,
+                readShieldIdmCooldownTimer, fixPrediction, aggressiveFinalStability,
+                finalStabilityPenaltyMode, null);
+    }
+
+    public StarkShieldApp(HighwayEngine engine, List<Vehicle> vehicles, int predictFutureSeconds,
+                          double shieldEgoRangeMeters, boolean randomizeHiddenTargetAndCooldown,
+                          boolean checkChangeLaneToRearVehicleThreat,
+                          boolean readShieldIdmCooldownTimer,
+                          boolean fixPrediction,
+                          boolean aggressiveFinalStability,
+                          FinalStabilityPenaltyMode finalStabilityPenaltyMode,
+                          Long hiddenStateRandomSeed) {
         this.engine = engine;
         this.dt = engine.dt;
         this.STEPS_PER_SECOND = engine.STEPS_PER_SECOND;
@@ -145,6 +217,15 @@ public class StarkShieldApp {
         this.randomizeHiddenTargetAndCooldown = randomizeHiddenTargetAndCooldown;
         this.checkChangeLaneToRearVehicleThreat = checkChangeLaneToRearVehicleThreat;
         this.readShieldIdmCooldownTimer = readShieldIdmCooldownTimer;
+        this.fixPrediction = fixPrediction;
+        this.aggressiveFinalStability = aggressiveFinalStability;
+        this.finalStabilityPenaltyMode = finalStabilityPenaltyMode == null
+                ? DEFAULT_FINAL_STABILITY_PENALTY_MODE
+                : finalStabilityPenaltyMode;
+        this.replayRandomSeed = hiddenStateRandomSeed;
+        this.hiddenStateRandom = hiddenStateRandomSeed == null
+                ? new Random()
+                : new Random(hiddenStateRandomSeed);
         this.vehicles = vehicles;
         this.filteredVehicles = getVehiclesWithinEgoRangeIncludingEgo(shieldEgoRangeMeters);
         this.vehicles = this.filteredVehicles;
@@ -156,7 +237,11 @@ public class StarkShieldApp {
                 ? this.getInitialStateWithRandomHiddenState(this.vehicles)
                 : this.getInitialState(this.vehicles);
         system = new ControlledSystem(getController(), (rg, ds) -> ds.apply(this.getEnvironmentUpdates(rg, ds)), initialState);
-        sequence = new EvolutionSequence(new SilentMonitor("Vehicle"), new DefaultRandomGenerator(), rg -> system, EVOLUTION_SEQUENCE_SIZE);
+        DefaultRandomGenerator sequenceRandom = new DefaultRandomGenerator();
+        if (hiddenStateRandomSeed != null) {
+            sequenceRandom.setSeed(hiddenStateRandomSeed ^ EVOLUTION_SEQUENCE_SEED_OFFSET);
+        }
+        sequence = new EvolutionSequence(new SilentMonitor("Vehicle"), sequenceRandom, rg -> system, EVOLUTION_SEQUENCE_SIZE);
         //printSummary();
     }
 
@@ -220,6 +305,9 @@ public class StarkShieldApp {
             shieldCondition = new ConjunctionDisTLFormula(shieldCondition, rearThreatCondition);
         }
         DoubleSemanticsVisitor semantics = new DoubleSemanticsVisitor();
+        if (replayRandomSeed != null) {
+            semantics.setRandomGeneratorSeed((int) (replayRandomSeed ^ DISTL_SEMANTICS_SEED_OFFSET));
+        }
         lastCollisionRobustness = semantics.eval(noCollision).eval(EVOLUTION_SEQUENCE_SIZE, 0, sequence);
         lastFirstSecondSafetyRobustness = semantics.eval(safeFrontDistanceAtFirstSecond).eval(EVOLUTION_SEQUENCE_SIZE, 0, sequence);
         lastStabilityRobustness = semantics.eval(stableAtLastStep).eval(EVOLUTION_SEQUENCE_SIZE, 0, sequence);
@@ -315,10 +403,10 @@ public class StarkShieldApp {
                 state.get(egoOffset + VarTable.speed.ordinal()),
                 state.get(egoOffset + VarTable.targetSpeed.ordinal())));
 
-        for (int lane = egoLane - 1; lane <= egoLane + 1; lane++) {
-            int frontIndex = getFrontVehicleIndexInLane(state, egoIndex, lane);
-            if (frontIndex >= 0) {
+        if (aggressiveFinalStability) {
+            for (int frontIndex : getFinalStabilityReferenceVehicles(state, egoIndex)) {
                 int frontOffset = vehicleOffset(frontIndex);
+                int lane = (int) state.get(frontOffset + VarTable.lane_index.ordinal());
                 double frontGap = state.get(frontOffset + VarTable.x.ordinal()) - state.get(egoOffset + VarTable.x.ordinal()) - VEHICLE_LENGTH;
                 double closingSpeed = Math.max(0.0, state.get(egoOffset + VarTable.vx.ordinal()) - state.get(frontOffset + VarTable.vx.ordinal()));
                 double penalty = frontVehicleStabilityPenalty(state, egoIndex, frontIndex);
@@ -329,6 +417,23 @@ public class StarkShieldApp {
                         frontGap,
                         closingSpeed,
                         penalty));
+            }
+        } else {
+            for (int lane = egoLane - 1; lane <= egoLane + 1; lane++) {
+                int frontIndex = getFrontVehicleIndexInLane(state, egoIndex, lane);
+                if (frontIndex >= 0) {
+                    int frontOffset = vehicleOffset(frontIndex);
+                    double frontGap = state.get(frontOffset + VarTable.x.ordinal()) - state.get(egoOffset + VarTable.x.ordinal()) - VEHICLE_LENGTH;
+                    double closingSpeed = Math.max(0.0, state.get(egoOffset + VarTable.vx.ordinal()) - state.get(frontOffset + VarTable.vx.ordinal()));
+                    double penalty = frontVehicleStabilityPenalty(state, egoIndex, frontIndex);
+                    diagnosis.append(String.format("%n  front lane=%d vehicleId=%s vehicleIndex=%d gap=%.2f closingSpeed=%.2f penalty=%.3f",
+                            lane,
+                            vehicleId(state, frontIndex),
+                            frontIndex,
+                            frontGap,
+                            closingSpeed,
+                            penalty));
+                }
             }
         }
 
@@ -446,7 +551,7 @@ public class StarkShieldApp {
             return state;
         }
 
-        List<Integer> adjacentVehicles = getVehiclesInAdjacentLanes(state, egoIndex);
+        List<Integer> adjacentVehicles = getFinalStabilityReferenceVehicles(state, egoIndex);
         if (adjacentVehicles.isEmpty()) {
             return state;
         }
@@ -512,6 +617,12 @@ public class StarkShieldApp {
 
         double totalPenalty = 0.0;
         int egoLane = (int) state.get(vehicleOffset(egoIndex) + VarTable.lane_index.ordinal());
+        if (aggressiveFinalStability) {
+            for (int frontIndex : getFinalStabilityReferenceVehicles(state, egoIndex)) {
+                totalPenalty += frontVehicleStabilityPenalty(state, egoIndex, frontIndex);
+            }
+            return totalPenalty;
+        }
         for (int lane = egoLane - 1; lane <= egoLane + 1; lane++) {
             int frontIndex = getFrontVehicleIndexInLane(state, egoIndex, lane);
             if (frontIndex >= 0) {
@@ -726,9 +837,24 @@ public class StarkShieldApp {
         if (frontGap < MIN_CLOSE_FRONT_GAP && relativeSpeed <= -SAFE_RECEDING_RELATIVE_SPEED) {
             return 0.0;
         }
+        if (finalStabilityPenaltyMode == FinalStabilityPenaltyMode.BRAKING_AWARE_GAP) {
+            return brakingAwareFrontStabilityPenalty(frontGap, closingSpeed);
+        }
+        return defaultFrontStabilityPenalty(frontGap, closingSpeed);
+    }
+
+    private double defaultFrontStabilityPenalty(double frontGap, double closingSpeed) {
         double distanceViolation = Math.max(0.0, MIN_STABLE_FRONT_GAP - frontGap) / MIN_STABLE_FRONT_GAP;
         double speedViolation = Math.max(0.0, closingSpeed - MAX_STABLE_RELATIVE_SPEED) / MAX_STABLE_RELATIVE_SPEED;
         return Math.min(1.0, distanceViolation + speedViolation);
+    }
+
+    private double brakingAwareFrontStabilityPenalty(double frontGap, double closingSpeed) {
+        double requiredGap = MIN_STABLE_FRONT_GAP
+                + closingSpeed * BRAKING_AWARE_FRONT_RESPONSE_TIME
+                + closingSpeed * closingSpeed / (2.0 * BRAKING_AWARE_FRONT_MAX_BRAKE);
+        double gapViolation = Math.max(0.0, requiredGap - frontGap) / Math.max(requiredGap, 0.1);
+        return Math.min(1.0, gapViolation);
     }
 
     private int getEgoVehicleIndex(DataState state) {
@@ -782,6 +908,38 @@ public class StarkShieldApp {
             }
         }
         return adjacentVehicles;
+    }
+
+    private List<Integer> getFinalStabilityReferenceVehicles(DataState state, int egoIndex) {
+        if (!aggressiveFinalStability) {
+            return getVehiclesInAdjacentLanes(state, egoIndex);
+        }
+        List<Integer> vehicles = new ArrayList<>();
+        int egoLane = (int) state.get(vehicleOffset(egoIndex) + VarTable.lane_index.ordinal());
+        int frontIndex = getFrontVehicleIndexInLane(state, egoIndex, egoLane);
+        if (frontIndex >= 0) {
+            vehicles.add(frontIndex);
+        }
+        int closestCutInFrontIndex = -1;
+        double closestCutInFrontX = Double.POSITIVE_INFINITY;
+        double egoX = state.get(vehicleOffset(egoIndex) + VarTable.x.ordinal());
+        for (int i = 0; i < this.vehicles.size(); i++) {
+            if (i == egoIndex) {
+                continue;
+            }
+            int offset = vehicleOffset(i);
+            int lane = (int) state.get(offset + VarTable.lane_index.ordinal());
+            int targetLane = (int) state.get(offset + VarTable.target_lane_index.ordinal());
+            double x = state.get(offset + VarTable.x.ordinal());
+            if (lane != egoLane && targetLane == egoLane && x > egoX && x < closestCutInFrontX) {
+                closestCutInFrontIndex = i;
+                closestCutInFrontX = x;
+            }
+        }
+        if (closestCutInFrontIndex >= 0 && !vehicles.contains(closestCutInFrontIndex)) {
+            vehicles.add(closestCutInFrontIndex);
+        }
+        return vehicles;
     }
 
     private int getFrontVehicleIndexInLane(DataState state, int egoIndex, int targetLane) {
@@ -963,7 +1121,7 @@ public class StarkShieldApp {
             values.put(offSet + VarTable.plannedAcceleration.ordinal(), v.plannedAcceleration);
             values.put(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering);
             values.put(offSet + VarTable.role.ordinal(), v.role.equals("EGO") ? 0.0 : 1.0);
-            values.put(offSet + VarTable.targetSpeed.ordinal(), v.targetSpeed);
+            values.put(offSet + VarTable.targetSpeed.ordinal(), getShieldTargetSpeed(v));
             values.put(offSet + VarTable.idmCooldownTimer.ordinal(), getIdmCooldownTimer(v));
             values.put(offSet + VarTable.idmActionStepLength.ordinal(), getIdmActionStepLength(v));
             values.put(offSet + VarTable.reactionDelay.ordinal(), getReactionDelay(v));
@@ -1010,7 +1168,7 @@ public class StarkShieldApp {
             values.put(offSet + VarTable.plannedAcceleration.ordinal(), v.plannedAcceleration);
             values.put(offSet + VarTable.plannedSteering.ordinal(), v.plannedSteering);
             values.put(offSet + VarTable.role.ordinal(), v.role.equals("EGO") ? 0.0 : 1.0);
-            values.put(offSet + VarTable.targetSpeed.ordinal(), getRandomTargetSpeed(v));
+            values.put(offSet + VarTable.targetSpeed.ordinal(), getShieldTargetSpeed(v));
             values.put(offSet + VarTable.idmCooldownTimer.ordinal(), getIdmCooldownTimer(v));
             values.put(offSet + VarTable.idmActionStepLength.ordinal(), getIdmActionStepLength(v));
             values.put(offSet + VarTable.reactionDelay.ordinal(), getReactionDelay(v));
@@ -1135,6 +1293,27 @@ public class StarkShieldApp {
                 RANDOM_TARGET_SPEED_MIN, RANDOM_TARGET_SPEED_MAX);
     }
 
+    private double getShieldTargetSpeed(Vehicle vehicle) {
+        if ("EGO".equals(vehicle.role)) {
+            return vehicle.targetSpeed;
+        }
+        if (fixPrediction) {
+            return getFixedPredictionTargetSpeed(vehicle);
+        }
+        return randomizeHiddenTargetAndCooldown ? getRandomTargetSpeed(vehicle) : vehicle.targetSpeed;
+    }
+
+    private double getFixedPredictionTargetSpeed(Vehicle vehicle) {
+        if (Double.isNaN(vehicle.previousSecondSpeed)) {
+            return vehicle.speed;
+        }
+        double speedDifference = Math.abs(vehicle.speed - vehicle.previousSecondSpeed);
+        double targetDelta = Math.max(0.0, speedDifference - FIXED_PREDICTION_SPEED_DIFF_THRESHOLD)
+                * FIXED_PREDICTION_TARGET_GAIN;
+        targetDelta = Math.min(FIXED_PREDICTION_MAX_TARGET_DELTA, targetDelta);
+        return vehicle.speed + targetDelta;
+    }
+
     private double getRandomCooldownTimer(Vehicle vehicle) {
         if ("EGO".equals(vehicle.role)) {
             return vehicle.cooldownTimer;
@@ -1143,7 +1322,7 @@ public class StarkShieldApp {
                 RANDOM_COOLDOWN_MIN, RANDOM_COOLDOWN_MAX);
     }
 
-    private double getIdmCooldownTimer(Vehicle vehicle) {
+    protected double getIdmCooldownTimer(Vehicle vehicle) {
         if (!(vehicle instanceof IDMCooldownVehicle idmCooldownVehicle)) {
             return 0.0;
         }
@@ -1154,13 +1333,13 @@ public class StarkShieldApp {
         return hiddenStateRandom.nextDouble() * maxCooldown;
     }
 
-    private double getIdmActionStepLength(Vehicle vehicle) {
+    protected double getIdmActionStepLength(Vehicle vehicle) {
         return vehicle instanceof IDMCooldownVehicle idmCooldownVehicle
                 ? idmCooldownVehicle.idmActionStepLength
                 : 0.0;
     }
 
-    private double getReactionDelay(Vehicle vehicle) {
+    protected double getReactionDelay(Vehicle vehicle) {
         return vehicle instanceof DelayedIDMVehicle delayedIDMVehicle
                 ? delayedIDMVehicle.reactionDelay
                 : 0.0;
@@ -1291,7 +1470,7 @@ public class StarkShieldApp {
         return observedAccelerations;
     }
 
-    private void recordFirstInternalAccelerationUncertainty(List<Vehicle> localVehicles) {
+    protected void recordFirstInternalAccelerationUncertainty(List<Vehicle> localVehicles) {
         for (Vehicle vehicle : localVehicles) {
             Double observedAcceleration = observedAccelerationByVehicleId.get(vehicle.id);
             if (observedAcceleration == null) {

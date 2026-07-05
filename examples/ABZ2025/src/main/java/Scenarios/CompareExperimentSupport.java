@@ -100,19 +100,27 @@ final class CompareExperimentSupport {
                             initialStateFile.toString(),
                             config.dt
                     );
-                    realWorld.idmTimeWanted = config.idmTimeWanted;
+                    if (config.npcVehicleType != HighwayEngine.NpcVehicleType.DEFAULT) {
+                        realWorld.idmTimeWanted = config.idmTimeWanted;
+                    }
 
                     StarkScenarioRunner.RunOptions options = new StarkScenarioRunner.RunOptions();
                     options.pauseAfterShieldDecision = false;
                     options.saveInitialState = false;
                     options.renderEachStep = false;
                     options.rethrowOnCrash = false;
+                    options.continueAfterNpcCollision = config.continueAfterNpcCollision;
                     options.printDiagnostics = false;
                     options.timeForSimulationSeconds = config.timeForSimulationSeconds;
                     options.shieldPredictFutureSeconds = config.shieldPredictFutureSeconds;
                     options.shieldEgoRangeMeters = config.shieldEgoRangeMeters;
                     options.randomizeShieldHiddenTargetAndCooldown = config.randomizeShieldHiddenTargetAndCooldown;
+                    options.shieldHiddenStateRandomSeed = config.shieldHiddenStateRandomSeed;
                     options.readShieldIdmCooldownTimer = config.readShieldIdmCooldownTimer;
+                    options.fixPrediction = config.fixPrediction;
+                    options.aggressiveFinalStability = config.aggressiveFinalStability;
+                    options.finalStabilityPenaltyMode = config.finalStabilityPenaltyMode;
+                    options.enableOvertakeGate = config.enableOvertakeGate;
                     options.checkChangeLaneToRearVehicleThreat = config.checkChangeLaneToRearVehicleThreat;
                     options.aiProfile = config.aiProfile;
                     options.decisionMode = decisionMode;

@@ -132,6 +132,7 @@ public class Vehicle {
         this.id = copy.id;
         this.politeness = copy.politeness;
         this.cooldownTimer = copy.cooldownTimer;
+        this.previousSecondSpeed = copy.previousSecondSpeed;
         this.setTargetLaneIndex(copy.getTargetLaneIndex());
         this.setLaneIndex(copy.getLaneIndex());
         this.x = copy.x;
@@ -149,6 +150,7 @@ public class Vehicle {
         copy.id = this.id;
         copy.politeness = this.politeness;
         copy.cooldownTimer = this.cooldownTimer;
+        copy.previousSecondSpeed = this.previousSecondSpeed;
         copy.setTargetLaneIndex(this.getTargetLaneIndex());
         copy.setLaneIndex(this.getLaneIndex());
         copy.x = this.x;
@@ -183,6 +185,7 @@ public class Vehicle {
 
     @SerializedName("target_speed")
     public double targetSpeed = 25;
+    public transient double previousSecondSpeed = Double.NaN;
     public void planAction(List<Vehicle> allVehicles) throws Exception {
 
         //this.target_lane_index = EngineUtils.computeTargetLane(this, allVehicles, List.of(0, 1), this.engine);
