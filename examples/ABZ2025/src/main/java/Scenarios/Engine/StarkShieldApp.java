@@ -56,6 +56,8 @@ public class StarkShieldApp {
     private static final double MIN_STABLE_FRONT_GAP = 15.0;
     private static final double MIN_CLOSE_FRONT_GAP = 10.0;
     private static final double MAX_STABLE_RELATIVE_SPEED = 2.0;
+    public static final double DEFAULT_AGGRESSIVE_V2_MAX_STABLE_RELATIVE_SPEED = 2.0;
+    private static double aggressiveV2MaxStableRelativeSpeed = DEFAULT_AGGRESSIVE_V2_MAX_STABLE_RELATIVE_SPEED;
     private static final double SAFE_RECEDING_RELATIVE_SPEED = 2.0;
     private static final double BRAKING_AWARE_FRONT_RESPONSE_TIME = 1.0;
     private static final double BRAKING_AWARE_FRONT_MAX_BRAKE = 3.0;
@@ -67,6 +69,12 @@ public class StarkShieldApp {
     private static final double FIRST_SECOND_MIN_FRONT_GAP = 2.0;
     private static final double CHANGE_LANE_REAR_REACTION_TIME = 0.1;
     private static final double CHANGE_LANE_REAR_MAX_BRAKE = 3.0;
+    public static final double DEFAULT_AGGRESSIVE_V3_TTC_THRESHOLD = 3.0;
+    private static double aggressiveV3TtcThreshold = DEFAULT_AGGRESSIVE_V3_TTC_THRESHOLD;
+    private static final double RSS_RESPONSE_TIME = 1.0;
+    private static final double RSS_EGO_MAX_ACCELERATION_DURING_RESPONSE = 5.0;
+    private static final double RSS_EGO_MIN_BRAKE = 3.0;
+    private static final double RSS_FRONT_MAX_BRAKE = 3.0;
     private static final double MIN_FRONT_ACCELERATION_UNCERTAINTY = 0.5;
     private static final double MAX_FRONT_ACCELERATION_UNCERTAINTY = 5.0;
     private static final double FRONT_ACCELERATION_UNCERTAINTY_GAIN = 1.0;
@@ -88,14 +96,49 @@ public class StarkShieldApp {
     public static final boolean DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER = true;
     public static final boolean DEFAULT_FIX_PREDICTION = false;
     public static final boolean DEFAULT_AGGRESSIVE_FINAL_STABILITY = false;
+    public static final boolean DEFAULT_CHECK_FIRST_SECOND_SAFETY = true;
+    private static boolean checkFirstSecondSafety = DEFAULT_CHECK_FIRST_SECOND_SAFETY;
     public enum FinalStabilityPenaltyMode {
         DEFAULT,
-        BRAKING_AWARE_GAP
+        BRAKING_AWARE_GAP,
+        AGGRESSIVE_V2,
+        AGGRESSIVE_V3,
+        AGGRESSIVE_V4_RSS
     }
     public static final FinalStabilityPenaltyMode DEFAULT_FINAL_STABILITY_PENALTY_MODE = FinalStabilityPenaltyMode.DEFAULT;
     protected static final int EVOLUTION_SEQUENCE_SIZE = 30;
     //public int stepCount = 0;
     protected List<Vehicle> finalVehicles;
+
+    public static void setAggressiveV2MaxStableRelativeSpeed(double threshold) {
+        if (threshold <= 0.0 || Double.isNaN(threshold) || Double.isInfinite(threshold)) {
+            throw new IllegalArgumentException("Aggressive V2 max stable relative speed must be positive.");
+        }
+        aggressiveV2MaxStableRelativeSpeed = threshold;
+    }
+
+    public static double getAggressiveV2MaxStableRelativeSpeed() {
+        return aggressiveV2MaxStableRelativeSpeed;
+    }
+
+    public static void setAggressiveV3TtcThreshold(double threshold) {
+        if (threshold <= 0.0 || Double.isNaN(threshold) || Double.isInfinite(threshold)) {
+            throw new IllegalArgumentException("Aggressive V3 TTC threshold must be positive.");
+        }
+        aggressiveV3TtcThreshold = threshold;
+    }
+
+    public static double getAggressiveV3TtcThreshold() {
+        return aggressiveV3TtcThreshold;
+    }
+
+    public static void setCheckFirstSecondSafety(boolean enabled) {
+        checkFirstSecondSafety = enabled;
+    }
+
+    public static boolean isCheckFirstSecondSafety() {
+        return checkFirstSecondSafety;
+    }
 
     public double dt = 0;
     protected HighwayEngine engine;
@@ -293,10 +336,12 @@ public class StarkShieldApp {
                 0,
                 0
         );
-        DisTLFormula shieldCondition = new ConjunctionDisTLFormula(
-                noCollision,
-                new ConjunctionDisTLFormula(safeFrontDistanceAtFirstSecond, stableAtLastStep)
-        );
+        DisTLFormula shieldCondition = checkFirstSecondSafety
+                ? new ConjunctionDisTLFormula(
+                        noCollision,
+                        new ConjunctionDisTLFormula(safeFrontDistanceAtFirstSecond, stableAtLastStep)
+                )
+                : new ConjunctionDisTLFormula(noCollision, stableAtLastStep);
         if (checkChangeLaneToRearVehicleThreat) {
             DisTLFormula rearThreatCondition = new ConjunctionDisTLFormula(
                     changeLaneRearThreatAtDecisionStep,
@@ -332,6 +377,28 @@ public class StarkShieldApp {
             diagnosis += getDecisionStepRearThreatDiagnosis();
         }
         return diagnosis;
+    }
+
+    public String getFailedSafetyCriteriaCsv() {
+        List<String> failed = new ArrayList<>();
+        if (lastCollisionRobustness < MIN_ACCEPTABLE_ROBUSTNESS) {
+            failed.add("collision");
+        }
+        if (checkFirstSecondSafety && lastFirstSecondSafetyRobustness < MIN_ACCEPTABLE_ROBUSTNESS) {
+            failed.add("firstSecondSafety");
+        }
+        if (lastStabilityRobustness < MIN_ACCEPTABLE_ROBUSTNESS) {
+            failed.add("stability");
+        }
+        if (checkChangeLaneToRearVehicleThreat
+                && lastChangeLaneRearThreatRobustness < MIN_ACCEPTABLE_ROBUSTNESS) {
+            failed.add("changeLaneRearThreat");
+        }
+        if (checkChangeLaneToRearVehicleThreat
+                && lastChangeLaneLowSpeedRobustness < MIN_ACCEPTABLE_ROBUSTNESS) {
+            failed.add("changeLaneLowSpeed");
+        }
+        return String.join(",", failed);
     }
 
     private String getDecisionStepRearThreatDiagnosis() {
@@ -410,13 +477,14 @@ public class StarkShieldApp {
                 double frontGap = state.get(frontOffset + VarTable.x.ordinal()) - state.get(egoOffset + VarTable.x.ordinal()) - VEHICLE_LENGTH;
                 double closingSpeed = Math.max(0.0, state.get(egoOffset + VarTable.vx.ordinal()) - state.get(frontOffset + VarTable.vx.ordinal()));
                 double penalty = frontVehicleStabilityPenalty(state, egoIndex, frontIndex);
-                diagnosis.append(String.format("%n  front lane=%d vehicleId=%s vehicleIndex=%d gap=%.2f closingSpeed=%.2f penalty=%.3f",
+                diagnosis.append(String.format("%n  front lane=%d vehicleId=%s vehicleIndex=%d gap=%.2f closingSpeed=%.2f penalty=%.3f%s",
                         lane,
                         vehicleId(state, frontIndex),
                         frontIndex,
                         frontGap,
                         closingSpeed,
-                        penalty));
+                        penalty,
+                        rssDiagnosisSuffix(state, egoIndex, frontIndex, frontGap)));
             }
         } else {
             for (int lane = egoLane - 1; lane <= egoLane + 1; lane++) {
@@ -426,13 +494,14 @@ public class StarkShieldApp {
                     double frontGap = state.get(frontOffset + VarTable.x.ordinal()) - state.get(egoOffset + VarTable.x.ordinal()) - VEHICLE_LENGTH;
                     double closingSpeed = Math.max(0.0, state.get(egoOffset + VarTable.vx.ordinal()) - state.get(frontOffset + VarTable.vx.ordinal()));
                     double penalty = frontVehicleStabilityPenalty(state, egoIndex, frontIndex);
-                    diagnosis.append(String.format("%n  front lane=%d vehicleId=%s vehicleIndex=%d gap=%.2f closingSpeed=%.2f penalty=%.3f",
+                    diagnosis.append(String.format("%n  front lane=%d vehicleId=%s vehicleIndex=%d gap=%.2f closingSpeed=%.2f penalty=%.3f%s",
                             lane,
                             vehicleId(state, frontIndex),
                             frontIndex,
                             frontGap,
                             closingSpeed,
-                            penalty));
+                            penalty,
+                            rssDiagnosisSuffix(state, egoIndex, frontIndex, frontGap)));
                 }
             }
         }
@@ -440,6 +509,21 @@ public class StarkShieldApp {
         diagnosis.append(String.format("%n  totalFrontStabilityPenalty=%.3f threshold=%.3f",
                 frontVehicleStabilityPenalty(state), STABILITY_DISTANCE_THRESHOLD));
         return diagnosis.toString();
+    }
+
+    private String rssDiagnosisSuffix(DataState state, int egoIndex, int frontIndex, double frontGap) {
+        if (finalStabilityPenaltyMode != FinalStabilityPenaltyMode.AGGRESSIVE_V4_RSS) {
+            return "";
+        }
+        int egoOffset = vehicleOffset(egoIndex);
+        int frontOffset = vehicleOffset(frontIndex);
+        double rssRequiredGap = rssLongitudinalSafeDistance(
+                state.get(egoOffset + VarTable.vx.ordinal()),
+                state.get(frontOffset + VarTable.vx.ordinal())
+        );
+        return String.format(" rssRequiredGap=%.2f rssMargin=%.2f",
+                rssRequiredGap,
+                frontGap - rssRequiredGap);
     }
 
     private String changeLaneRearThreatDiagnosis(DataState state, int egoIndex) {
@@ -566,9 +650,18 @@ public class StarkShieldApp {
             double vehicleX = state.get(offset + VarTable.x.ordinal());
             double vehicleVx = state.get(offset + VarTable.vx.ordinal());
             double vehicleSpeed = state.get(offset + VarTable.speed.ordinal());
-            targetX = Math.min(targetX, vehicleX - VEHICLE_LENGTH - MIN_STABLE_FRONT_GAP);
+            double desiredGap = finalStabilityPenaltyMode == FinalStabilityPenaltyMode.AGGRESSIVE_V4_RSS
+                    ? rssLongitudinalSafeDistance(state.get(egoOffset + VarTable.vx.ordinal()), vehicleVx)
+                    : MIN_STABLE_FRONT_GAP;
+            targetX = Math.min(targetX, vehicleX - VEHICLE_LENGTH - desiredGap);
             targetVx = Math.min(targetVx, vehicleVx);
             targetSpeed = Math.min(targetSpeed, vehicleSpeed);
+        }
+
+        if (finalStabilityPenaltyMode == FinalStabilityPenaltyMode.AGGRESSIVE_V4_RSS) {
+            return state.apply(List.of(
+                    new DataStateUpdate(egoOffset + VarTable.x.ordinal(), targetX)
+            ));
         }
 
         return state.apply(List.of(
@@ -840,12 +933,21 @@ public class StarkShieldApp {
         if (finalStabilityPenaltyMode == FinalStabilityPenaltyMode.BRAKING_AWARE_GAP) {
             return brakingAwareFrontStabilityPenalty(frontGap, closingSpeed);
         }
+        if (finalStabilityPenaltyMode == FinalStabilityPenaltyMode.AGGRESSIVE_V3) {
+            return aggressiveV3FrontStabilityPenalty(frontGap, closingSpeed);
+        }
+        if (finalStabilityPenaltyMode == FinalStabilityPenaltyMode.AGGRESSIVE_V4_RSS) {
+            return aggressiveV4RssFrontStabilityPenalty(frontGap, egoVx, frontVx);
+        }
         return defaultFrontStabilityPenalty(frontGap, closingSpeed);
     }
 
     private double defaultFrontStabilityPenalty(double frontGap, double closingSpeed) {
+        double maxStableRelativeSpeed = finalStabilityPenaltyMode == FinalStabilityPenaltyMode.AGGRESSIVE_V2
+                ? aggressiveV2MaxStableRelativeSpeed
+                : MAX_STABLE_RELATIVE_SPEED;
         double distanceViolation = Math.max(0.0, MIN_STABLE_FRONT_GAP - frontGap) / MIN_STABLE_FRONT_GAP;
-        double speedViolation = Math.max(0.0, closingSpeed - MAX_STABLE_RELATIVE_SPEED) / MAX_STABLE_RELATIVE_SPEED;
+        double speedViolation = Math.max(0.0, closingSpeed - maxStableRelativeSpeed) / maxStableRelativeSpeed;
         return Math.min(1.0, distanceViolation + speedViolation);
     }
 
@@ -855,6 +957,39 @@ public class StarkShieldApp {
                 + closingSpeed * closingSpeed / (2.0 * BRAKING_AWARE_FRONT_MAX_BRAKE);
         double gapViolation = Math.max(0.0, requiredGap - frontGap) / Math.max(requiredGap, 0.1);
         return Math.min(1.0, gapViolation);
+    }
+
+    private double aggressiveV3FrontStabilityPenalty(double frontGap, double closingSpeed) {
+        if (closingSpeed <= 0.0) {
+            return 0.0;
+        }
+        if (frontGap < MIN_STABLE_FRONT_GAP) {
+            return Math.min(1.0, Math.max(0.0, closingSpeed - MAX_STABLE_RELATIVE_SPEED) / MAX_STABLE_RELATIVE_SPEED);
+        }
+        double ttc = frontGap / closingSpeed;
+        if (ttc > aggressiveV3TtcThreshold) {
+            return 0.0;
+        }
+        return Math.min(1.0, (aggressiveV3TtcThreshold - ttc) / aggressiveV3TtcThreshold);
+    }
+
+    private double aggressiveV4RssFrontStabilityPenalty(double frontGap, double egoVx, double frontVx) {
+        double requiredGap = rssLongitudinalSafeDistance(egoVx, frontVx);
+        if (frontGap >= requiredGap) {
+            return 0.0;
+        }
+        return Math.min(1.0, Math.max(0.0, requiredGap - frontGap) / Math.max(requiredGap, 0.1));
+    }
+
+    private double rssLongitudinalSafeDistance(double egoVx, double frontVx) {
+        double egoSpeed = Math.max(0.0, egoVx);
+        double frontSpeed = Math.max(0.0, frontVx);
+        double egoSpeedAfterResponse = egoSpeed + RSS_RESPONSE_TIME * RSS_EGO_MAX_ACCELERATION_DURING_RESPONSE;
+        double responseDistance = egoSpeed * RSS_RESPONSE_TIME
+                + 0.5 * RSS_EGO_MAX_ACCELERATION_DURING_RESPONSE * RSS_RESPONSE_TIME * RSS_RESPONSE_TIME;
+        double egoBrakingDistance = egoSpeedAfterResponse * egoSpeedAfterResponse / (2.0 * RSS_EGO_MIN_BRAKE);
+        double frontBrakingDistance = frontSpeed * frontSpeed / (2.0 * RSS_FRONT_MAX_BRAKE);
+        return Math.max(0.0, responseDistance + egoBrakingDistance - frontBrakingDistance);
     }
 
     private int getEgoVehicleIndex(DataState state) {
@@ -914,15 +1049,17 @@ public class StarkShieldApp {
         if (!aggressiveFinalStability) {
             return getVehiclesInAdjacentLanes(state, egoIndex);
         }
-        List<Integer> vehicles = new ArrayList<>();
         int egoLane = (int) state.get(vehicleOffset(egoIndex) + VarTable.lane_index.ordinal());
+        double egoX = state.get(vehicleOffset(egoIndex) + VarTable.x.ordinal());
+        int closestReferenceIndex = -1;
+        double closestReferenceX = Double.POSITIVE_INFINITY;
+
         int frontIndex = getFrontVehicleIndexInLane(state, egoIndex, egoLane);
         if (frontIndex >= 0) {
-            vehicles.add(frontIndex);
+            closestReferenceIndex = frontIndex;
+            closestReferenceX = state.get(vehicleOffset(frontIndex) + VarTable.x.ordinal());
         }
-        int closestCutInFrontIndex = -1;
-        double closestCutInFrontX = Double.POSITIVE_INFINITY;
-        double egoX = state.get(vehicleOffset(egoIndex) + VarTable.x.ordinal());
+
         for (int i = 0; i < this.vehicles.size(); i++) {
             if (i == egoIndex) {
                 continue;
@@ -931,15 +1068,30 @@ public class StarkShieldApp {
             int lane = (int) state.get(offset + VarTable.lane_index.ordinal());
             int targetLane = (int) state.get(offset + VarTable.target_lane_index.ordinal());
             double x = state.get(offset + VarTable.x.ordinal());
-            if (lane != egoLane && targetLane == egoLane && x > egoX && x < closestCutInFrontX) {
-                closestCutInFrontIndex = i;
-                closestCutInFrontX = x;
+            if (lane != egoLane
+                    && x > egoX
+                    && x < closestReferenceX
+                    && hasHistoricalCutInIntentTowardEgoLane(state, i, egoLane)) {
+                closestReferenceIndex = i;
+                closestReferenceX = x;
             }
         }
-        if (closestCutInFrontIndex >= 0 && !vehicles.contains(closestCutInFrontIndex)) {
-            vehicles.add(closestCutInFrontIndex);
+
+        List<Integer> vehicles = new ArrayList<>();
+        if (closestReferenceIndex >= 0) {
+            vehicles.add(closestReferenceIndex);
         }
         return vehicles;
+    }
+
+    private boolean hasHistoricalCutInIntentTowardEgoLane(DataState state, int vehicleIndex, int egoLane) {
+        int historyIndex = historicalCutInIntentIndex(vehicleIndex);
+        if (historyIndex < state.size()) {
+            return state.get(historyIndex) > 0.0;
+        }
+        int offset = vehicleOffset(vehicleIndex);
+        int targetLane = (int) state.get(offset + VarTable.target_lane_index.ordinal());
+        return targetLane == egoLane;
     }
 
     private int getFrontVehicleIndexInLane(DataState state, int egoIndex, int targetLane) {
@@ -1031,6 +1183,43 @@ public class StarkShieldApp {
 
     private int rearThreatBeforeAccelerationIndex() {
         return vehicles.size() * VarTable.values().length + 6;
+    }
+
+    protected int historicalCutInIntentIndex(int vehicleIndex) {
+        return vehicles.size() * VarTable.values().length + auxilaryVarNums + vehicleIndex;
+    }
+
+    protected int dataStateSizeWithHistoricalCutInIntent() {
+        return vehicles.size() * VarTable.values().length + auxilaryVarNums + vehicles.size();
+    }
+
+    protected List<DataStateUpdate> updateHistoricalCutInIntentFlags(DataState state, List<Vehicle> localVehicles) {
+        List<DataStateUpdate> updates = new ArrayList<>();
+        int egoLane = -1;
+        for (Vehicle vehicle : localVehicles) {
+            if ("EGO".equals(vehicle.role)) {
+                egoLane = vehicle.getLaneIndex();
+                break;
+            }
+        }
+        if (egoLane < 0) {
+            return updates;
+        }
+        for (int i = 0; i < localVehicles.size(); i++) {
+            Vehicle vehicle = localVehicles.get(i);
+            double previous = historicalCutInIntentValue(state, i);
+            boolean currentIntent = !"EGO".equals(vehicle.role)
+                    && vehicle.getLaneIndex() != egoLane
+                    && vehicle.getTargetLaneIndex() == egoLane;
+            updates.add(new DataStateUpdate(historicalCutInIntentIndex(i),
+                    previous > 0.0 || currentIntent ? 1.0 : 0.0));
+        }
+        return updates;
+    }
+
+    private double historicalCutInIntentValue(DataState state, int vehicleIndex) {
+        int index = historicalCutInIntentIndex(vehicleIndex);
+        return index < state.size() ? state.get(index) : 0.0;
     }
 
     private int getConfiguredRearThreatRearVehicleIndex(DataState state) {
@@ -1141,11 +1330,12 @@ public class StarkShieldApp {
         //5. whether the current ego decision is a lane-change action
         values.put(isChangeLaneIndex(), initialIsChangeLane(vehicles) ? 1.0 : 0.0);
         populateRearThreatAuxiliaryValues(values, vehicles);
+        populateInitialHistoricalCutInIntentValues(values, vehicles);
 
 
 //        return new DataState(vehicles.size() * VarTable.values().length + 1,
 //                i -> values.getOrDefault(i, Double.NaN));
-        return new DataState(values.size(),i -> values.getOrDefault(i, Double.NaN));
+        return new DataState(dataStateSizeWithHistoricalCutInIntent(), i -> values.getOrDefault(i, 0.0));
     }
 
     private DataState getInitialStateWithRandomHiddenState(List<Vehicle> vehicles) {
@@ -1179,7 +1369,26 @@ public class StarkShieldApp {
         values.put(vehicles.size() * VarTable.values().length + 3, -1.0);
         values.put(isChangeLaneIndex(), initialIsChangeLane(vehicles) ? 1.0 : 0.0);
         populateRearThreatAuxiliaryValues(values, vehicles);
-        return new DataState(values.size(), i -> values.getOrDefault(i, Double.NaN));
+        populateInitialHistoricalCutInIntentValues(values, vehicles);
+        return new DataState(dataStateSizeWithHistoricalCutInIntent(), i -> values.getOrDefault(i, 0.0));
+    }
+
+    private void populateInitialHistoricalCutInIntentValues(Map<Integer, Double> values, List<Vehicle> vehicles) {
+        int egoLane = -1;
+        for (Vehicle vehicle : vehicles) {
+            if ("EGO".equals(vehicle.role)) {
+                egoLane = vehicle.getLaneIndex();
+                break;
+            }
+        }
+        for (int i = 0; i < vehicles.size(); i++) {
+            Vehicle vehicle = vehicles.get(i);
+            boolean currentIntent = egoLane >= 0
+                    && !"EGO".equals(vehicle.role)
+                    && vehicle.getLaneIndex() != egoLane
+                    && vehicle.getTargetLaneIndex() == egoLane;
+            values.put(historicalCutInIntentIndex(i), currentIntent ? 1.0 : 0.0);
+        }
     }
 
     private void populateRearThreatAuxiliaryValues(Map<Integer, Double> values, List<Vehicle> vehicles) {
@@ -1431,6 +1640,7 @@ public class StarkShieldApp {
                 updates.add(new DataStateUpdate(vehicles.size() * VarTable.values().length, 1.0));
             }
         }
+        updates.addAll(updateHistoricalCutInIntentFlags(state, localVehicles));
 
         //this.stepCount += 1;
         if(state.getStep() == predictionStepCount() - 2) {

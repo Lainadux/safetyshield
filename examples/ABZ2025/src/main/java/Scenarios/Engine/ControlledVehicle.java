@@ -160,6 +160,19 @@ public class ControlledVehicle extends Vehicle {
         }
     }
 
+    public void applyDecision(int action) {
+        HighwayAiClient.AiDecision decision = new HighwayAiClient.AiDecision();
+        decision.action = action;
+        decision.action_name = switch (action) {
+            case 0 -> "LANE_LEFT";
+            case 2 -> "LANE_RIGHT";
+            case 3 -> "FASTER";
+            case 4 -> "SLOWER";
+            default -> "IDLE";
+        };
+        this.applyAiAction(decision);
+    }
+
     private int clampLane(int lane) {
         HighwayEngine engine = this.getEngine();
         return Math.max(0, Math.min(engine.numLanes - 1, lane));

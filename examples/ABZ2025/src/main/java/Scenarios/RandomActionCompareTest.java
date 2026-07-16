@@ -119,8 +119,10 @@ public class RandomActionCompareTest {
                     options.shieldHiddenStateRandomSeed = config.shieldHiddenStateRandomSeed;
                     options.readShieldIdmCooldownTimer = config.readShieldIdmCooldownTimer;
                     options.fixPrediction = config.fixPrediction;
+                    options.finalStabilityMode = config.resolvedFinalStabilityMode();
                     options.aggressiveFinalStability = config.aggressiveFinalStability;
                     options.finalStabilityPenaltyMode = config.finalStabilityPenaltyMode;
+                    options.aggressiveV2MaxStableRelativeSpeed = config.aggressiveV2MaxStableRelativeSpeed;
                     options.enableOvertakeGate = config.enableOvertakeGate;
                     options.checkChangeLaneToRearVehicleThreat = checkChangeLaneToRearVehicleThreat;
                     options.aiProfile = config.aiProfile;

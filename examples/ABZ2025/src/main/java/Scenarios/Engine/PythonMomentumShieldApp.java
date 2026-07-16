@@ -2,6 +2,7 @@ package Scenarios.Engine;
 
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
+import Scenarios.StarkScenarioRunner;
 import it.unicam.quasylab.jspear.DefaultRandomGenerator;
 import it.unicam.quasylab.jspear.EvolutionSequence;
 import it.unicam.quasylab.jspear.SampleSet;
@@ -25,14 +26,66 @@ public class PythonMomentumShieldApp {
     private boolean randomizeNpcPoliteness = false;
     private boolean randomizeNpcCooldownTimer = false;
     private boolean randomizeNpcTargetSpeed = false;
+    private boolean checkFirstSecondSafety = StarkShieldApp.DEFAULT_CHECK_FIRST_SECOND_SAFETY;
     private boolean checkChangeLaneToRearVehicleThreat = false;
+    private boolean aggressiveFinalStability = false;
+    private StarkShieldApp.FinalStabilityPenaltyMode finalStabilityPenaltyMode =
+            StarkShieldApp.DEFAULT_FINAL_STABILITY_PENALTY_MODE;
     private String aiProfile = HighwayAiClient.getConfiguredAiProfile();
     private double dt = DEFAULT_DT;
     private int numLanes = 3;
+    private int predictFutureSeconds = 3;
     private boolean printDiagnostics = false;
+    private String lastFailedSafetyCriteria = "";
 
     public boolean verifySafe(String action, String traceJson) {
         return verifySafetyWithTrace(action, traceJson);
+    }
+
+    public boolean verifySafetyWithControllerDrivenPrediction(String action, String stateJson) {
+        try {
+            HighwayEnvVehicleState[] states = gson.fromJson(stateJson, HighwayEnvVehicleState[].class);
+            if (states == null || states.length == 0) {
+                throw new IllegalArgumentException("stateJson must contain at least one current state");
+            }
+
+            List<Vehicle> vehicles = toShieldVehicles(states);
+            vehicles = keepOnlyLongitudinalRadius(List.of(vehicles), radiusMeters).get(0);
+
+            HighwayEngine shieldEngine = new HighwayEngine(dt, true, true, vehicles);
+            shieldEngine.numLanes = inferNumLanes(vehicles);
+            StarkShieldApp.setCheckFirstSecondSafety(checkFirstSecondSafety);
+
+            ControlledVehicle ego = findControlledEgo(vehicles);
+            ego.applyAiAction(toAiDecision(action));
+
+            ControllerDrivenStarkShieldApp shield = new ControllerDrivenStarkShieldApp(
+                    shieldEngine,
+                    vehicles,
+                    predictFutureSeconds,
+                    Double.MAX_VALUE,
+                    randomizeNpcCooldownTimer || randomizeNpcTargetSpeed,
+                    checkChangeLaneToRearVehicleThreat,
+                    StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER,
+                    StarkShieldApp.DEFAULT_FIX_PREDICTION,
+                    aggressiveFinalStability,
+                    finalStabilityPenaltyMode
+            );
+
+            boolean safe = shield.verifySafe();
+            lastFailedSafetyCriteria = safe ? "" : shield.getFailedSafetyCriteriaCsv();
+            if (printDiagnostics || !safe) {
+                System.out.printf("PythonMomentumShield(controller-driven): action=%s aiProfile=%s safe=%s radius=%.1f predictionSeconds=%d%n",
+                        action, aiProfile, safe, radiusMeters, predictFutureSeconds);
+                System.out.println(shield.getUnsafeDiagnosis());
+            }
+            return safe;
+        } catch (Exception exception) {
+            lastFailedSafetyCriteria = "shieldException";
+            System.err.println("PythonMomentumShield controller-driven prediction failed: " + exception.getMessage());
+            exception.printStackTrace();
+            return false;
+        }
     }
 
     public boolean verifySafetyWithTrace(String action, String traceJson) {
@@ -51,14 +104,18 @@ public class PythonMomentumShieldApp {
             List<Vehicle> initialVehicles = trace.get(0);
             HighwayEngine shieldEngine = new HighwayEngine(dt, true, true, initialVehicles);
             shieldEngine.numLanes = inferNumLanes(initialVehicles);
+            StarkShieldApp.setCheckFirstSecondSafety(checkFirstSecondSafety);
 
             FixedTraceShield shield = new FixedTraceShield(
                     shieldEngine,
                     trace,
-                    checkChangeLaneToRearVehicleThreat
+                    checkChangeLaneToRearVehicleThreat,
+                    aggressiveFinalStability,
+                    finalStabilityPenaltyMode
             );
 
             boolean safe = shield.verifySafe();
+            lastFailedSafetyCriteria = safe ? "" : shield.getFailedSafetyCriteriaCsv();
             if (printDiagnostics || !safe) {
                 System.out.printf("PythonMomentumShield: action=%s aiProfile=%s safe=%s radius=%.1f%n",
                         action, aiProfile, safe, radiusMeters);
@@ -66,6 +123,7 @@ public class PythonMomentumShieldApp {
             }
             return safe;
         } catch (Exception exception) {
+            lastFailedSafetyCriteria = "shieldException";
             System.err.println("PythonMomentumShield failed: " + exception.getMessage());
             exception.printStackTrace();
             return false;
@@ -91,15 +149,19 @@ public class PythonMomentumShieldApp {
             List<Vehicle> initialVehicles = sampleTraces.get(0).get(0);
             HighwayEngine shieldEngine = new HighwayEngine(dt, true, true, initialVehicles);
             shieldEngine.numLanes = inferNumLanes(initialVehicles);
+            StarkShieldApp.setCheckFirstSecondSafety(checkFirstSecondSafety);
 
             FixedTraceShield shield = new FixedTraceShield(
                     shieldEngine,
                     sampleTraces,
                     checkChangeLaneToRearVehicleThreat,
+                    aggressiveFinalStability,
+                    finalStabilityPenaltyMode,
                     true
             );
 
             boolean safe = shield.verifySafe();
+            lastFailedSafetyCriteria = safe ? "" : shield.getFailedSafetyCriteriaCsv();
             if (printDiagnostics || !safe) {
                 System.out.printf("PythonMomentumShield: action=%s aiProfile=%s samples=%d safe=%s radius=%.1f%n",
                         action, aiProfile, sampleTraces.size(), safe, radiusMeters);
@@ -107,10 +169,15 @@ public class PythonMomentumShieldApp {
             }
             return safe;
         } catch (Exception exception) {
+            lastFailedSafetyCriteria = "shieldException";
             System.err.println("PythonMomentumShield failed: " + exception.getMessage());
             exception.printStackTrace();
             return false;
         }
+    }
+
+    public String getLastFailedSafetyCriteria() {
+        return lastFailedSafetyCriteria;
     }
 
     public void setRadiusMeters(double radiusMeters) {
@@ -157,6 +224,47 @@ public class PythonMomentumShieldApp {
         this.checkChangeLaneToRearVehicleThreat = checkChangeLaneToRearVehicleThreat;
     }
 
+    public void setCheckFirstSecondSafety(boolean checkFirstSecondSafety) {
+        this.checkFirstSecondSafety = checkFirstSecondSafety;
+    }
+
+    public void setAggressiveFinalStability(boolean aggressiveFinalStability) {
+        this.aggressiveFinalStability = aggressiveFinalStability;
+    }
+
+    public void setAggressiveFinalStabilityV2(boolean enabled) {
+        if (enabled) {
+            this.aggressiveFinalStability = true;
+            this.finalStabilityPenaltyMode = StarkShieldApp.FinalStabilityPenaltyMode.AGGRESSIVE_V2;
+        } else {
+            this.finalStabilityPenaltyMode = StarkShieldApp.DEFAULT_FINAL_STABILITY_PENALTY_MODE;
+        }
+    }
+
+    public void setFinalStabilityPenaltyMode(String mode) {
+        if (mode == null || mode.isBlank()) {
+            this.finalStabilityPenaltyMode = StarkShieldApp.DEFAULT_FINAL_STABILITY_PENALTY_MODE;
+            return;
+        }
+        this.finalStabilityPenaltyMode = StarkShieldApp.FinalStabilityPenaltyMode.valueOf(mode.trim().toUpperCase());
+    }
+
+    public void setFinalStabilityMode(String mode) {
+        if (mode == null || mode.isBlank()) {
+            this.aggressiveFinalStability = StarkShieldApp.DEFAULT_AGGRESSIVE_FINAL_STABILITY;
+            this.finalStabilityPenaltyMode = StarkShieldApp.DEFAULT_FINAL_STABILITY_PENALTY_MODE;
+            return;
+        }
+        StarkScenarioRunner.FinalStabilityMode resolvedMode =
+                StarkScenarioRunner.FinalStabilityMode.valueOf(mode.trim().toUpperCase());
+        this.aggressiveFinalStability = resolvedMode.aggressiveFinalStability();
+        this.finalStabilityPenaltyMode = resolvedMode.penaltyMode();
+    }
+
+    public void setAggressiveV2MaxStableRelativeSpeed(double threshold) {
+        StarkShieldApp.setAggressiveV2MaxStableRelativeSpeed(threshold);
+    }
+
     public void setDt(double dt) {
         if (dt <= 0.0) {
             throw new IllegalArgumentException("dt must be positive");
@@ -168,8 +276,39 @@ public class PythonMomentumShieldApp {
         this.numLanes = Math.max(1, numLanes);
     }
 
+    public void setPredictionSeconds(double predictionSeconds) {
+        this.predictFutureSeconds = Math.max(1, (int) Math.round(predictionSeconds));
+    }
+
     public void setPrintDiagnostics(boolean printDiagnostics) {
         this.printDiagnostics = printDiagnostics;
+    }
+
+    private ControlledVehicle findControlledEgo(List<Vehicle> vehicles) {
+        Vehicle ego = findEgo(vehicles);
+        if (ego instanceof ControlledVehicle controlledVehicle) {
+            return controlledVehicle;
+        }
+        throw new IllegalArgumentException("controller-driven prediction requires the EGO vehicle to be controlled");
+    }
+
+    private HighwayAiClient.AiDecision toAiDecision(String action) {
+        int actionIndex;
+        try {
+            actionIndex = Integer.parseInt(action == null ? "1" : action.trim());
+        } catch (Exception ignored) {
+            actionIndex = 1;
+        }
+        HighwayAiClient.AiDecision decision = new HighwayAiClient.AiDecision();
+        decision.action = actionIndex;
+        decision.action_name = switch (actionIndex) {
+            case 0 -> "LANE_LEFT";
+            case 2 -> "LANE_RIGHT";
+            case 3 -> "FASTER";
+            case 4 -> "SLOWER";
+            default -> "IDLE";
+        };
+        return decision;
     }
 
     private List<Vehicle> toShieldVehicles(HighwayEnvVehicleState[] states) {
@@ -272,19 +411,30 @@ public class PythonMomentumShieldApp {
 
     private static class FixedTraceShield extends StarkShieldApp {
         FixedTraceShield(HighwayEngine engine, List<List<Vehicle>> trace,
-                         boolean checkChangeLaneToRearVehicleThreat) {
+                         boolean checkChangeLaneToRearVehicleThreat,
+                         boolean aggressiveFinalStability,
+                         StarkShieldApp.FinalStabilityPenaltyMode finalStabilityPenaltyMode) {
             super(engine, trace.get(0), Math.max(1, trace.size()),
                     Double.MAX_VALUE, false, checkChangeLaneToRearVehicleThreat,
-                    StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER);
+                    StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER,
+                    StarkShieldApp.DEFAULT_FIX_PREDICTION,
+                    aggressiveFinalStability,
+                    finalStabilityPenaltyMode);
             this.predictionStepCountOverride = trace.size();
             this.sequence = new FixedEvolutionSequence(toSampleSets(trace));
         }
 
         FixedTraceShield(HighwayEngine engine, List<List<List<Vehicle>>> sampleTraces,
-                         boolean checkChangeLaneToRearVehicleThreat, boolean sampleMajor) {
+                         boolean checkChangeLaneToRearVehicleThreat,
+                         boolean aggressiveFinalStability,
+                         StarkShieldApp.FinalStabilityPenaltyMode finalStabilityPenaltyMode,
+                         boolean sampleMajor) {
             super(engine, sampleTraces.get(0).get(0), 1,
                     Double.MAX_VALUE, false, checkChangeLaneToRearVehicleThreat,
-                    StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER);
+                    StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER,
+                    StarkShieldApp.DEFAULT_FIX_PREDICTION,
+                    aggressiveFinalStability,
+                    finalStabilityPenaltyMode);
             this.predictionStepCountOverride = sampleTraces.get(0).size();
             this.sequence = new FixedEvolutionSequence(toSampleSetsFromSampleTraces(sampleTraces));
         }

@@ -27,7 +27,9 @@ public class HighwayEngine {
     public boolean enhancedCollisionCheckEnabled =false;
     public List<Vehicle> vehicles = new ArrayList<>();
     private volatile boolean predictedStatePromptEnabled = false;
+    private volatile boolean renderDebugEnabled = false;
     private volatile Runnable predictedStateQueryAction;
+    private volatile Runnable showIfAction;
     public double dt;
     public boolean hasEgo = false;
     public double runTime = 0.0;
@@ -36,7 +38,11 @@ public class HighwayEngine {
     private JFrame frame;
     private JPanel renderPanel;
     private JButton predictedStateQueryButton;
-    private final int SCALE = 15;
+    private JButton showIfButton;
+    private static final double DEFAULT_RENDER_SCALE = 7.0;
+    private static final double MIN_RENDER_SCALE = 3.0;
+    private static final double MAX_RENDER_SCALE = 25.0;
+    private double renderScale = DEFAULT_RENDER_SCALE;
     private final int LANE_WIDTH = 4;
     private int cameraDragOffsetX = 0;
     private int cameraDragOffsetY = 0;
@@ -51,6 +57,8 @@ public class HighwayEngine {
     public double npcIdmActionStepLength = 0.1;
     public double npcReactionDelay = 0.3;
     public double idmTimeWanted = EngineUtils.DEFAULT_TIME_WANTED;
+    public double npcInitialSpeedMin = 21.0;
+    public double npcInitialSpeedMax = 24.0;
     public int numLanes = 3;
 
 
@@ -125,6 +133,13 @@ public class HighwayEngine {
         this.predictedStateQueryAction = action;
         if (predictedStateQueryButton != null) {
             SwingUtilities.invokeLater(() -> predictedStateQueryButton.setEnabled(action != null));
+        }
+    }
+
+    public void setShowIfAction(Runnable action) {
+        this.showIfAction = action;
+        if (showIfButton != null) {
+            SwingUtilities.invokeLater(() -> showIfButton.setEnabled(action != null));
         }
     }
 
@@ -256,7 +271,7 @@ public class HighwayEngine {
             }
             v.cooldownTimer = rand.nextDouble() * 1;
 
-            double speed = 21.0 + rand.nextDouble() * 3.0;
+            double speed = sampleNpcInitialSpeed(rand);
 
 
             v.speed = speed;
@@ -336,7 +351,7 @@ public class HighwayEngine {
             v.id = ""+spawned;
             v.cooldownTimer = rand.nextDouble() * 1;
 
-            double speed = 21.0 + rand.nextDouble() * 3.0;
+            double speed = sampleNpcInitialSpeed(rand);
 
 
             v.speed = speed;
@@ -377,6 +392,12 @@ public class HighwayEngine {
         double offset = defaultSpacing * Math.exp(-5.0 / 40.0 * this.numLanes);
         double x0 = this.vehicles.isEmpty() ? 3.0 * offset : maxVehicleX();
         return x0 + offset * (0.9 + 0.2 * rand.nextDouble());
+    }
+
+    private double sampleNpcInitialSpeed(Random rand) {
+        double minSpeed = Math.min(npcInitialSpeedMin, npcInitialSpeedMax);
+        double maxSpeed = Math.max(npcInitialSpeedMin, npcInitialSpeedMax);
+        return minSpeed + rand.nextDouble() * (maxSpeed - minSpeed);
     }
 
     private double maxVehicleX() {
@@ -448,7 +469,7 @@ public class HighwayEngine {
 
     private void initUI() {
         frame = new JFrame("STARK Highway Simulator");
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.setSize(1200, 400);
         frame.setLayout(new BorderLayout());
 
@@ -477,9 +498,39 @@ public class HighwayEngine {
                 action.run();
             }
         });
+        showIfButton = new JButton("Show if");
+        showIfButton.setEnabled(false);
+        showIfButton.addActionListener(e -> {
+            Runnable action = showIfAction;
+            if (action != null) {
+                action.run();
+            }
+        });
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
         toolbar.add(predictionPromptButton);
         toolbar.add(predictedStateQueryButton);
+        toolbar.add(showIfButton);
+        JButton zoomOutButton = new JButton("Zoom -");
+        zoomOutButton.addActionListener(e -> changeRenderScale(1.0 / 1.25));
+        JButton zoomInButton = new JButton("Zoom +");
+        zoomInButton.addActionListener(e -> changeRenderScale(1.25));
+        JButton resetZoomButton = new JButton("Reset zoom");
+        resetZoomButton.addActionListener(e -> {
+            renderScale = DEFAULT_RENDER_SCALE;
+            cameraDragOffsetX = 0;
+            cameraDragOffsetY = 0;
+            renderPanel.repaint();
+        });
+        toolbar.add(zoomOutButton);
+        toolbar.add(zoomInButton);
+        toolbar.add(resetZoomButton);
+        JToggleButton debugButton = new JToggleButton("Debug: OFF");
+        debugButton.addActionListener(e -> {
+            renderDebugEnabled = debugButton.isSelected();
+            debugButton.setText(renderDebugEnabled ? "Debug: ON" : "Debug: OFF");
+            renderPanel.repaint();
+        });
+        toolbar.add(debugButton);
 
         frame.add(toolbar, BorderLayout.NORTH);
         frame.add(renderPanel, BorderLayout.CENTER);
@@ -525,8 +576,17 @@ public class HighwayEngine {
         };
         renderPanel.addMouseListener(cameraDragHandler);
         renderPanel.addMouseMotionListener(cameraDragHandler);
+        renderPanel.addMouseWheelListener(e -> {
+            double factor = e.getWheelRotation() < 0 ? 1.15 : 1.0 / 1.15;
+            changeRenderScale(factor);
+        });
     }
 
+    private void changeRenderScale(double factor) {
+        double nextScale = renderScale * factor;
+        renderScale = Math.max(MIN_RENDER_SCALE, Math.min(MAX_RENDER_SCALE, nextScale));
+        renderPanel.repaint();
+    }
 
     private void drawHighway(Graphics2D g2d) {
 
@@ -538,7 +598,7 @@ public class HighwayEngine {
 
 
         double cameraX = vehicles.isEmpty() ? 0 : getCameraVehicle().x;
-        int offsetX = (int) (screenWidth / 2 - cameraX * SCALE) + cameraDragOffsetX; // 鎶婅溅鏀惧湪灞忓箷宸︿晶 1/3 澶?
+        int offsetX = (int) (screenWidth / 2 - cameraX * renderScale) + cameraDragOffsetX;
         int offsetY = cameraDragOffsetY;
 
         g2d.setColor(Color.WHITE);
@@ -548,7 +608,7 @@ public class HighwayEngine {
 
         for (int i = 0; i < lineYPositions.length; i++) {
 
-            int yPixel = topMargin + offsetY + (int)(lineYPositions[i] * SCALE);
+            int yPixel = topMargin + offsetY + (int)(lineYPositions[i] * renderScale);
 
             if (i == 0 || i == lineYPositions.length - 1) {
 
@@ -566,11 +626,11 @@ public class HighwayEngine {
 
         for (Vehicle v : vehicles) {
 
-            int px = (int) (v.x * SCALE) + offsetX;
-            int py = (int) (v.y * SCALE) + topMargin + offsetY;
+            int px = (int) (v.x * renderScale) + offsetX;
+            int py = (int) (v.y * renderScale) + topMargin + offsetY;
 
-            int carPixelLength = (int) (v.LENGTH * SCALE);
-            int carPixelWidth = (int) (v.WIDTH * SCALE);
+            int carPixelLength = Math.max(12, (int) (v.LENGTH * renderScale));
+            int carPixelWidth = Math.max(6, (int) (v.WIDTH * renderScale));
 
 
             AffineTransform oldTransform = g2d.getTransform();
@@ -602,9 +662,13 @@ public class HighwayEngine {
 
 
             g2d.setColor(Color.YELLOW);
-            g2d.drawString(String.format("v:%.1f T:%.1f p:%.2f", v.speed, v.targetSpeed, v.politeness), px - 15, py - 20);
-            g2d.drawString(String.format("a:%.2f %s", v.plannedAcceleration, idmCooldownLabel(v)), px - 15, py - 6);
-            if (v.mobiling && !v.mobilDebug.isEmpty()) {
+            g2d.drawString(String.format("v:%.1f", v.speed), px - 15, py - 20);
+            g2d.drawString(String.format("x:%.1f", v.x), px - 15, py - 6);
+            if (renderDebugEnabled) {
+                g2d.drawString(String.format("a:%.2f", v.plannedAcceleration), px - 15, py + 8);
+                g2d.drawString(String.format("T:%.1f p:%.2f %s", v.targetSpeed, v.politeness, idmCooldownLabel(v)), px - 15, py + 22);
+            }
+            if (renderDebugEnabled && v.mobiling && !v.mobilDebug.isEmpty()) {
                 int line = 0;
                 List<Integer> mobilLanes = new ArrayList<>(v.mobilDebug.keySet());
                 Collections.sort(mobilLanes);
@@ -617,13 +681,13 @@ public class HighwayEngine {
                             info.targetRearVehicleId,
                             info.selfBenefit,
                             info.karma
-                    ), px - 15, py + 20 + line * 32);
+                    ), px - 15, py + 34 + line * 32);
                     g2d.drawString(String.format(
                             "oldR:%s ben:%.2f total:%.2f",
                             info.originalRearVehicleId,
                             info.originalRearBenefit,
                             info.overallBenefit
-                    ), px - 15, py + 36 + line * 32);
+                    ), px - 15, py + 50 + line * 32);
                     line++;
                 }
             }

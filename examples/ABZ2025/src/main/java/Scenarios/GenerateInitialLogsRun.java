@@ -20,7 +20,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class GenerateInitialLogsRun {
-    private static final int LOG_COUNT = 500;
+    private static final int LOG_COUNT = 100;
     private static final int THREAD_COUNT = 4;
 
     public static void main(String[] args, boolean polite, String logSuffixID) throws Exception {
@@ -41,17 +41,19 @@ public class GenerateInitialLogsRun {
         }
         writeCommentFile(config);
 
-        int workerCount = Math.max(1, Math.min(THREAD_COUNT, LOG_COUNT));
+        int logCount = Math.max(1, config.logCount);
+        int threadCount = Math.max(1, config.threadCount);
+        int workerCount = Math.max(1, Math.min(threadCount, logCount));
         ExecutorService executor = Executors.newFixedThreadPool(workerCount);
         List<Future<?>> futures = new ArrayList<>();
         AtomicInteger completed = new AtomicInteger(0);
         StarkScenarioRunner.VerifyTimingStats verifyTimingStats = new StarkScenarioRunner.VerifyTimingStats();
 
         try {
-            for (int i = 0; i < LOG_COUNT; i++) {
+            for (int i = 0; i < logCount; i++) {
                 final int logIndex = i + 1;
                 futures.add(executor.submit(() -> {
-                    System.out.printf("Generating log %d/%d%n", logIndex, LOG_COUNT);
+                    System.out.printf("Generating log %d/%d%n", logIndex, logCount);
                     HighwayEngine realWorld = createWorld(config);
 
                     StarkScenarioRunner.RunOptions options = new StarkScenarioRunner.RunOptions();
@@ -63,14 +65,18 @@ public class GenerateInitialLogsRun {
                     options.printDiagnostics = false;
                     options.logDir = config.logDir;
                     options.timeForSimulationSeconds = config.timeForSimulationSeconds;
+                    options.maxDesiredSpeed = config.maxDesiredSpeed;
                     options.shieldPredictFutureSeconds = config.shieldPredictFutureSeconds;
                     options.shieldEgoRangeMeters = config.shieldEgoRangeMeters;
                     options.randomizeShieldHiddenTargetAndCooldown = config.randomizeShieldHiddenTargetAndCooldown;
                     options.shieldHiddenStateRandomSeed = config.shieldHiddenStateRandomSeed;
                     options.readShieldIdmCooldownTimer = config.readShieldIdmCooldownTimer;
                     options.fixPrediction = config.fixPrediction;
+                    options.finalStabilityMode = config.resolvedFinalStabilityMode();
                     options.aggressiveFinalStability = config.aggressiveFinalStability;
                     options.finalStabilityPenaltyMode = config.finalStabilityPenaltyMode;
+                    options.aggressiveV2MaxStableRelativeSpeed = config.aggressiveV2MaxStableRelativeSpeed;
+                    options.aggressiveV3TtcThreshold = config.aggressiveV3TtcThreshold;
                     options.enableOvertakeGate = config.enableOvertakeGate;
                     options.checkChangeLaneToRearVehicleThreat = config.checkChangeLaneToRearVehicleThreat;
                     options.decisionMode = config.decisionMode;
@@ -103,6 +109,8 @@ public class GenerateInitialLogsRun {
         HighwayEngine realWorld = new HighwayEngine(config.dt, true);
         realWorld.placeEgoAtTrafficMiddle = config.placeEgoAtTrafficMiddle;
         realWorld.egoCentered = config.egoCentered;
+        realWorld.npcInitialSpeedMin = config.npcInitialSpeedMin;
+        realWorld.npcInitialSpeedMax = config.npcInitialSpeedMax;
         realWorld.npcVehicleType = config.npcVehicleType;
         if (config.npcVehicleType != HighwayEngine.NpcVehicleType.DEFAULT) {
             realWorld.npcIdmActionStepLength = config.npcIdmActionStepLength;
@@ -239,6 +247,7 @@ public class GenerateInitialLogsRun {
                 - threadCount: %d
                 - dt: %.3f
                 - simulationSeconds: %d
+                - maxDesiredSpeed: %.3f
                 - shieldPredictFutureSeconds: %d
                 - decisionMode: `%s`
                 - useInstantProtectedCar: %s
@@ -251,7 +260,7 @@ public class GenerateInitialLogsRun {
                 - placeEgoAtTrafficMiddle: %s
                 - egoCentered: %s
                 - initialStateDescription: one EGO vehicle is spawned first with `id=0`, `role=EGO`, `x=0`; when `egoCentered=true`, its lane is the middle lane; remaining vehicles are NPCs with random lanes and Python-style sequential longitudinal placement ahead of the current front-most vehicle.
-                - initialSpeedDistribution: ego speed is fixed at 25 m/s; NPC speed is `uniform(21,24)`
+                - initialSpeedDistribution: ego speed is fixed at 25 m/s; NPC speed is `uniform(%.3f,%.3f)`
                 - initialTargetSpeedDistribution: `targetSpeed = speed`
                 - initialCooldownDistribution: `cooldownTimer = uniform(0,1)`
                 - initialSpawnSafety: rejected and resampled when the initial state is not dynamically safe according to `HighwayEngine.isSpawnDynamicallySafe`
@@ -265,8 +274,9 @@ public class GenerateInitialLogsRun {
                 - starkShieldTargetSpeedSource: %s
                 - shieldHiddenStateRandomSeed: %s
                 - fixPrediction: %s
-                - aggressiveFinalStability: %s
-                - finalStabilityPenaltyMode: `%s`
+                - finalStabilityMode: `%s`
+                - aggressiveV2MaxStableRelativeSpeed: %.3f
+                - aggressiveV3TtcThreshold: %.3f
                 - enableOvertakeGate: %s
                 - starkShieldCooldownTimerSource: %s
                 - starkShieldIdmCooldownTimerSource: %s
@@ -275,10 +285,11 @@ public class GenerateInitialLogsRun {
                 normalizeComment(config.comment),
                 LocalDateTime.now(),
                 config.logDir,
-                LOG_COUNT,
-                THREAD_COUNT,
+                config.logCount,
+                config.threadCount,
                 config.dt,
                 config.timeForSimulationSeconds,
+                config.maxDesiredSpeed,
                 config.shieldPredictFutureSeconds,
                 config.decisionMode,
                 config.useInstantProtectedCar,
@@ -293,6 +304,8 @@ public class GenerateInitialLogsRun {
                 config.polite,
                 config.placeEgoAtTrafficMiddle,
                 config.egoCentered,
+                config.npcInitialSpeedMin,
+                config.npcInitialSpeedMax,
                 config.npcVehicleType,
                 config.npcIdmActionStepLength,
                 config.npcReactionDelay,
@@ -306,8 +319,9 @@ public class GenerateInitialLogsRun {
                         : "passed from real world vehicle state",
                 config.shieldHiddenStateRandomSeed,
                 config.fixPrediction,
-                config.aggressiveFinalStability,
-                config.finalStabilityPenaltyMode,
+                config.resolvedFinalStabilityMode(),
+                config.aggressiveV2MaxStableRelativeSpeed,
+                config.aggressiveV3TtcThreshold,
                 config.enableOvertakeGate,
                 config.randomizeShieldHiddenTargetAndCooldown
                         ? "randomized for NPCs, clipped Gaussian mean=0.5 std=1/6 range=[0,1]; ego uses real cooldownTimer"
@@ -329,17 +343,25 @@ public class GenerateInitialLogsRun {
     public static class GenerationConfig {
         public String logDir = StarkScenarioRunner.DEFAULT_LOG_DIR;
         public String comment = "";
+        public int logCount = LOG_COUNT;
+        public int threadCount = THREAD_COUNT;
         public double dt = StarkScenarioRunner.DEFAULT_DT;
         public int timeForSimulationSeconds = StarkScenarioRunner.DEFAULT_TIME_FOR_SIMULATION_SECONDS;
+        public double maxDesiredSpeed = 40.0;
         public int shieldPredictFutureSeconds = 3;
         public double shieldEgoRangeMeters = StarkShieldApp.DEFAULT_SHIELD_EGO_RANGE_METERS;
         public boolean randomizeShieldHiddenTargetAndCooldown = StarkShieldApp.DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN;
         public Long shieldHiddenStateRandomSeed = null;
         public boolean readShieldIdmCooldownTimer = StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER;
         public boolean fixPrediction = StarkShieldApp.DEFAULT_FIX_PREDICTION;
+        public StarkScenarioRunner.FinalStabilityMode finalStabilityMode = null;
         public boolean aggressiveFinalStability = StarkShieldApp.DEFAULT_AGGRESSIVE_FINAL_STABILITY;
         public StarkShieldApp.FinalStabilityPenaltyMode finalStabilityPenaltyMode =
                 StarkShieldApp.DEFAULT_FINAL_STABILITY_PENALTY_MODE;
+        public double aggressiveV2MaxStableRelativeSpeed =
+                StarkShieldApp.DEFAULT_AGGRESSIVE_V2_MAX_STABLE_RELATIVE_SPEED;
+        public double aggressiveV3TtcThreshold =
+                StarkShieldApp.DEFAULT_AGGRESSIVE_V3_TTC_THRESHOLD;
         public boolean enableOvertakeGate = false;
         public boolean checkChangeLaneToRearVehicleThreat = false;
         public StarkScenarioRunner.DecisionMode decisionMode = StarkScenarioRunner.DecisionMode.STARK_SHIELD;
@@ -354,6 +376,8 @@ public class GenerateInitialLogsRun {
         public double populateMaxX = 400.0;
         public boolean placeEgoAtTrafficMiddle = false;
         public boolean egoCentered = false;
+        public double npcInitialSpeedMin = 21.0;
+        public double npcInitialSpeedMax = 24.0;
         public boolean polite = false;
         public boolean enhancedCollisionCheckEnabled = true;
         public boolean continueAfterNpcCollision = false;
@@ -361,5 +385,12 @@ public class GenerateInitialLogsRun {
         public double npcIdmActionStepLength = 0.1;
         public double npcReactionDelay = 0.3;
         public double idmTimeWanted = EngineUtils.DEFAULT_TIME_WANTED;
+
+        public StarkScenarioRunner.FinalStabilityMode resolvedFinalStabilityMode() {
+            return finalStabilityMode != null
+                    ? finalStabilityMode
+                    : StarkScenarioRunner.FinalStabilityMode.fromLegacy(
+                    aggressiveFinalStability, finalStabilityPenaltyMode);
+        }
     }
 }

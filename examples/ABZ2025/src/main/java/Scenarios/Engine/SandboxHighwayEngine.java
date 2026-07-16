@@ -25,6 +25,7 @@ package Scenarios.Engine;
 public class SandboxHighwayEngine extends HighwayEngine{
     boolean crashed =false;
     boolean crashStateSaved = false;
+    boolean egoCollisionOnly = false;
     @Override
     public void checkCollisions() {
 
@@ -42,6 +43,9 @@ public class SandboxHighwayEngine extends HighwayEngine{
                 boolean overlapY = dy < (2.0 / 2.0 + 2.0 / 2.0); // 鍋囪 WIDTH 鏄?2.0
 
                 if (overlapX && overlapY) {
+                    if (egoCollisionOnly && !isEgoInvolved(v1, v2)) {
+                        continue;
+                    }
 
                     String crashMsg = String.format(
                             "馃挜 鑷村懡鐗╃悊纰版挒妫€娴嬭Е鍙戯紒\n" +
@@ -63,5 +67,13 @@ public class SandboxHighwayEngine extends HighwayEngine{
                 }
             }
         }
+    }
+
+    private boolean isEgoInvolved(Vehicle v1, Vehicle v2) {
+        return isEgoVehicle(v1) || isEgoVehicle(v2);
+    }
+
+    private boolean isEgoVehicle(Vehicle vehicle) {
+        return vehicle instanceof ControlledVehicle || "EGO".equals(vehicle.role);
     }
 }

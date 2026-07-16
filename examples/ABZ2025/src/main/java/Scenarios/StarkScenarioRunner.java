@@ -1,6 +1,7 @@
 package Scenarios;
 
 import Scenarios.Engine.ControlledVehicle;
+import Scenarios.Engine.ControllerDrivenStarkShieldApp;
 import Scenarios.Engine.HighwayAiClient;
 import Scenarios.Engine.HighwayEngine;
 import Scenarios.Engine.InstantBasedStarkShieldApp;
@@ -80,6 +81,9 @@ public final class StarkScenarioRunner {
         Random probabilityRejectionRandom = options.probabilityRejectionSeed == null
                 ? null
                 : new Random(options.probabilityRejectionSeed);
+        SafeController safeController = options.decisionMode == DecisionMode.SAFE_CONTROLLER
+                ? new SafeController()
+                : null;
 
         boolean crashed = false;
         boolean initialScenarioSaved = false;
@@ -95,7 +99,9 @@ public final class StarkScenarioRunner {
                 if (isDecisionStep(realWorld, protectedControlledVehicle, options)) {
                     prevTgtspd = protectedControlledVehicle.targetSpeed;
                     prevCurrentLane = protectedControlledVehicle.getLaneIndex();
-                    if (protectedControlledVehicle instanceof InstantProtectedControlledVehicle instantEgo) {
+                    if (options.decisionMode == DecisionMode.SAFE_CONTROLLER) {
+                        // SafeController actions are applied only after they are verified below.
+                    } else if (protectedControlledVehicle instanceof InstantProtectedControlledVehicle instantEgo) {
                         if (options.useRandomActionGenerator) {
                             if (randomActionGenerator == null) {
                                 instantEgo.applyRandomDecision(new Random());
@@ -114,14 +120,38 @@ public final class StarkScenarioRunner {
                     } else {
                         protectedControlledVehicle.fetchDesiredLaneAndTargetSpeed();
                     }
+                    clampEgoTargetSpeed(protectedControlledVehicle, options);
                 }
 
                 if (isDecisionStep(realWorld, protectedControlledVehicle, options)) {
                     StarkShieldApp starkShieldApp = null;
                     StarkShieldApp overtakeGateShieldApp = null;
                     boolean isSafe;
-                    if (options.decisionMode == DecisionMode.STARK_SHIELD
-                            || options.decisionMode == DecisionMode.INSTANT_BASED_STARK_SHIELD) {
+                    if (options.decisionMode == DecisionMode.SAFE_CONTROLLER) {
+                        long verifyStartNanos = System.nanoTime();
+                        SafeController.Result safeControllerResult = safeController.selectCurrentActionAndCacheNext(
+                                realWorld,
+                                protectedControlledVehicle,
+                                options,
+                                previousDecisionSpeedByVehicleId,
+                                shieldDecisionIndex
+                        );
+                        shieldDecisionIndex++;
+                        protectedControlledVehicle.applyDecision(safeControllerResult.currentAction());
+                        clampEgoTargetSpeed(protectedControlledVehicle, options);
+                        starkShieldApp = safeControllerResult.shield();
+                        isSafe = true;
+                        long verifyElapsedNanos = System.nanoTime() - verifyStartNanos;
+                        if (options.verifyTimingStats != null) {
+                            options.verifyTimingStats.record(verifyElapsedNanos, false, protectedControlledVehicle.speed);
+                        }
+                    } else if (options.decisionMode == DecisionMode.STARK_SHIELD
+                            || options.decisionMode == DecisionMode.INSTANT_BASED_STARK_SHIELD
+                            || options.decisionMode == DecisionMode.CONTROLLER_DRIVEN_STARK_SHIELD) {
+                        StarkShieldApp.setAggressiveV2MaxStableRelativeSpeed(
+                                options.aggressiveV2MaxStableRelativeSpeed);
+                        StarkShieldApp.setAggressiveV3TtcThreshold(
+                                options.aggressiveV3TtcThreshold);
                         Long hiddenStateSeed = hiddenStateSeedForDecision(options, shieldDecisionIndex);
                         List<Vehicle> shieldVehicles = buildShieldVehicles(realWorld.vehicles, previousDecisionSpeedByVehicleId);
                         HighwayEngine shieldEngine = new HighwayEngine(dt, true, true, shieldVehicles);
@@ -136,10 +166,27 @@ public final class StarkScenarioRunner {
                                     options.checkChangeLaneToRearVehicleThreat,
                                     options.readShieldIdmCooldownTimer,
                                     options.fixPrediction,
-                                    options.aggressiveFinalStability,
-                                    options.finalStabilityPenaltyMode,
+                                    options.resolvedAggressiveFinalStability(),
+                                    options.resolvedFinalStabilityPenaltyMode(),
                                     options.instantShieldPredictionSeconds,
                                     options.instantShieldAiActionSeconds,
+                                    hiddenStateSeed);
+                        } else if (options.decisionMode == DecisionMode.CONTROLLER_DRIVEN_STARK_SHIELD) {
+                            StarkShieldApp.FinalStabilityPenaltyMode controllerDrivenPenaltyMode =
+                                    options.finalStabilityMode == null
+                                            ? StarkShieldApp.FinalStabilityPenaltyMode.AGGRESSIVE_V2
+                                            : options.resolvedFinalStabilityPenaltyMode();
+                            starkShieldApp = new ControllerDrivenStarkShieldApp(
+                                    shieldEngine,
+                                    shieldEngine.vehicles,
+                                    options.shieldPredictFutureSeconds,
+                                    options.shieldEgoRangeMeters,
+                                    options.randomizeShieldHiddenTargetAndCooldown,
+                                    options.checkChangeLaneToRearVehicleThreat,
+                                    options.readShieldIdmCooldownTimer,
+                                    options.fixPrediction,
+                                    true,
+                                    controllerDrivenPenaltyMode,
                                     hiddenStateSeed);
                         } else {
                             starkShieldApp = shieldEngine.createStarkShieldApp(
@@ -149,8 +196,8 @@ public final class StarkScenarioRunner {
                                     options.checkChangeLaneToRearVehicleThreat,
                                     options.readShieldIdmCooldownTimer,
                                     options.fixPrediction,
-                                    options.aggressiveFinalStability,
-                                    options.finalStabilityPenaltyMode,
+                                    options.resolvedAggressiveFinalStability(),
+                                    options.resolvedFinalStabilityPenaltyMode(),
                                     hiddenStateSeed);
                         }
                         long verifyStartNanos = System.nanoTime();
@@ -166,8 +213,8 @@ public final class StarkScenarioRunner {
                                     options.checkChangeLaneToRearVehicleThreat,
                                     options.readShieldIdmCooldownTimer,
                                     options.fixPrediction,
-                                    options.aggressiveFinalStability,
-                                    options.finalStabilityPenaltyMode,
+                                    options.resolvedAggressiveFinalStability(),
+                                    options.resolvedFinalStabilityPenaltyMode(),
                                     hiddenStateSeed);
                             isSafe = overtakeGateShieldApp.verifySafe();
                         }
@@ -182,10 +229,15 @@ public final class StarkScenarioRunner {
                         isSafe = !options.shouldRejectByProbability(protectedControlledVehicle.speed, probabilityRejectionRandom);
                     }
                     HighwayAiClient.AiDecision decision = protectedControlledVehicle.getLastAiDecision();
+                    List<Vehicle> showIfScenario = deepCopyVehicles(realWorld.vehicles);
+                    String showIfActionName = decision.action_name;
 
                     if (options.printDiagnostics) {
-                        System.out.printf("%s AI decision: action=%d, action_name=%s%n",
-                                isSafe ? "Safe" : "Unsafe", decision.action, decision.action_name);
+                        String decisionSource = options.decisionMode == DecisionMode.SAFE_CONTROLLER
+                                ? "SafeController"
+                                : "AI";
+                        System.out.printf("%s decision: source=%s action=%d, action_name=%s%n",
+                                isSafe ? "Safe" : "Unsafe", decisionSource, decision.action, decision.action_name);
                         if (starkShieldApp != null) {
                             System.out.println(starkShieldApp.getUnsafeDiagnosis());
                             if (overtakeGateShieldApp != null) {
@@ -201,11 +253,14 @@ public final class StarkScenarioRunner {
                         } else {
                             protectedControlledVehicle.targetSpeed = prevTgtspd - 5 < 0 ? 0 : prevTgtspd - 5;
                             protectedControlledVehicle.setTargetLaneIndex(prevCurrentLane);
+                            clampEgoTargetSpeed(protectedControlledVehicle, options);
                         }
                     }
 
                     if (options.pauseAfterShieldDecision) {
+                        realWorld.setShowIfAction(() -> showIfActionPreview(realWorld, showIfScenario, showIfActionName, options));
                         waitForSpaceToContinue(realWorld, starkShieldApp, options);
+                        realWorld.setShowIfAction(null);
                     }
                     updatePreviousDecisionSpeeds(realWorld.vehicles, previousDecisionSpeedByVehicleId);
                 }
@@ -342,6 +397,10 @@ public final class StarkScenarioRunner {
         return options.shieldHiddenStateRandomSeed + shieldDecisionIndex;
     }
 
+    private static void clampEgoTargetSpeed(ControlledVehicle ego, RunOptions options) {
+        ego.targetSpeed = Math.min(options.maxDesiredSpeed, Math.max(0.0, ego.targetSpeed));
+    }
+
     private static List<Vehicle> deepCopyVehicles(List<Vehicle> vehicles) {
         List<Vehicle> copies = new ArrayList<>();
         for (Vehicle vehicle : vehicles) {
@@ -374,11 +433,17 @@ public final class StarkScenarioRunner {
 
                 - shieldHiddenStateRandomSeed: %s
                 - randomizeShieldHiddenTargetAndCooldown: %s
+                - maxDesiredSpeed: %.3f
+                - aggressiveV2MaxStableRelativeSpeed: %.3f
+                - aggressiveV3TtcThreshold: %.3f
                 - randomActionSeed: %s
                 - probabilityRejectionSeed: %s
                 """,
                 options.shieldHiddenStateRandomSeed,
                 options.randomizeShieldHiddenTargetAndCooldown,
+                options.maxDesiredSpeed,
+                options.aggressiveV2MaxStableRelativeSpeed,
+                options.aggressiveV3TtcThreshold,
                 options.randomActionSeed,
                 options.probabilityRejectionSeed);
         try {
@@ -428,24 +493,62 @@ public final class StarkScenarioRunner {
         System.out.println(starkShieldApp.getPredictedFinalVehicleState(vehicleId));
     }
 
+    private static void showIfActionPreview(HighwayEngine sourceEngine,
+                                            List<Vehicle> proposedVehicles,
+                                            String actionName,
+                                            RunOptions options) {
+        List<Vehicle> previewVehicles = deepCopyVehicles(proposedVehicles);
+        HighwayEngine previewEngine = new HighwayEngine(sourceEngine.dt, true,
+                sourceEngine.enhancedCollisionCheckEnabled, previewVehicles);
+        previewEngine.numLanes = sourceEngine.numLanes;
+        previewEngine.idmTimeWanted = sourceEngine.idmTimeWanted;
+        previewEngine.continueAfterNpcCollision = options.continueAfterNpcCollision;
+        previewEngine.stepCount = sourceEngine.stepCount;
+        previewEngine.runTime = sourceEngine.runTime;
+
+        Thread previewThread = new Thread(() -> {
+            int previewSteps = Math.max(1, options.showIfPreviewSeconds * previewEngine.STEPS_PER_SECOND);
+            System.out.printf("Show-if preview started for action=%s, seconds=%d%n",
+                    actionName, options.showIfPreviewSeconds);
+            for (int i = 0; i < previewSteps; i++) {
+                try {
+                    previewEngine.step();
+                    previewEngine.render();
+                } catch (Exception e) {
+                    System.err.println("Show-if preview stopped: " + e.getMessage());
+                    break;
+                }
+            }
+        }, "show-if-preview");
+        previewThread.setDaemon(true);
+        previewThread.start();
+    }
+
     public static class RunOptions {
         public boolean pauseAfterShieldDecision = false;
         public boolean promptPredictedStateOnPause = false;
+        public int showIfPreviewSeconds = 8;
         public boolean saveInitialState = true;
         public boolean renderEachStep = true;
         public boolean rethrowOnCrash = true;
         public boolean continueAfterNpcCollision = false;
         public boolean printDiagnostics = true;
         public int timeForSimulationSeconds = DEFAULT_TIME_FOR_SIMULATION_SECONDS;
+        public double maxDesiredSpeed = 40.0;
         public int shieldPredictFutureSeconds = 3;
         public double shieldEgoRangeMeters = StarkShieldApp.DEFAULT_SHIELD_EGO_RANGE_METERS;
         public boolean randomizeShieldHiddenTargetAndCooldown = StarkShieldApp.DEFAULT_RANDOMIZE_HIDDEN_TARGET_AND_COOLDOWN;
         public Long shieldHiddenStateRandomSeed = null;
         public boolean readShieldIdmCooldownTimer = StarkShieldApp.DEFAULT_READ_SHIELD_IDM_COOLDOWN_TIMER;
         public boolean fixPrediction = StarkShieldApp.DEFAULT_FIX_PREDICTION;
+        public FinalStabilityMode finalStabilityMode = null;
         public boolean aggressiveFinalStability = StarkShieldApp.DEFAULT_AGGRESSIVE_FINAL_STABILITY;
         public StarkShieldApp.FinalStabilityPenaltyMode finalStabilityPenaltyMode =
                 StarkShieldApp.DEFAULT_FINAL_STABILITY_PENALTY_MODE;
+        public double aggressiveV2MaxStableRelativeSpeed =
+                StarkShieldApp.DEFAULT_AGGRESSIVE_V2_MAX_STABLE_RELATIVE_SPEED;
+        public double aggressiveV3TtcThreshold =
+                StarkShieldApp.DEFAULT_AGGRESSIVE_V3_TTC_THRESHOLD;
         public boolean enableOvertakeGate = false;
         public boolean checkChangeLaneToRearVehicleThreat = false;
         public boolean useInstantProtectedCar = false;
@@ -461,6 +564,20 @@ public final class StarkScenarioRunner {
         public double pureRejectProbability = 0.0;
         public SpeedRejectProbabilityModel speedRejectProbabilityModel = null;
         public String logDir = DEFAULT_LOG_DIR;
+
+        public boolean resolvedAggressiveFinalStability() {
+            return resolvedFinalStabilityMode().aggressiveFinalStability();
+        }
+
+        public StarkShieldApp.FinalStabilityPenaltyMode resolvedFinalStabilityPenaltyMode() {
+            return resolvedFinalStabilityMode().penaltyMode();
+        }
+
+        public FinalStabilityMode resolvedFinalStabilityMode() {
+            return finalStabilityMode != null
+                    ? finalStabilityMode
+                    : FinalStabilityMode.fromLegacy(aggressiveFinalStability, finalStabilityPenaltyMode);
+        }
 
         private boolean shouldRejectByProbability(double egoSpeed, Random random) {
             double probability = decisionMode == DecisionMode.SPEED_CONDITIONAL_PROBABILITY
@@ -478,9 +595,50 @@ public final class StarkScenarioRunner {
     public enum DecisionMode {
         NO_SHIELD,
         STARK_SHIELD,
+        CONTROLLER_DRIVEN_STARK_SHIELD,
+        SAFE_CONTROLLER,
         INSTANT_BASED_STARK_SHIELD,
         PURE_PROBABILITY,
         SPEED_CONDITIONAL_PROBABILITY
+    }
+
+    public enum FinalStabilityMode {
+        VICTIM(false, StarkShieldApp.FinalStabilityPenaltyMode.DEFAULT),
+        V1(true, StarkShieldApp.FinalStabilityPenaltyMode.DEFAULT),
+        V2(true, StarkShieldApp.FinalStabilityPenaltyMode.AGGRESSIVE_V2),
+        V3(true, StarkShieldApp.FinalStabilityPenaltyMode.AGGRESSIVE_V3),
+        V4_RSS(true, StarkShieldApp.FinalStabilityPenaltyMode.AGGRESSIVE_V4_RSS);
+
+        private final boolean aggressiveFinalStability;
+        private final StarkShieldApp.FinalStabilityPenaltyMode penaltyMode;
+
+        FinalStabilityMode(boolean aggressiveFinalStability,
+                           StarkShieldApp.FinalStabilityPenaltyMode penaltyMode) {
+            this.aggressiveFinalStability = aggressiveFinalStability;
+            this.penaltyMode = penaltyMode;
+        }
+
+        public boolean aggressiveFinalStability() {
+            return aggressiveFinalStability;
+        }
+
+        public StarkShieldApp.FinalStabilityPenaltyMode penaltyMode() {
+            return penaltyMode;
+        }
+
+        public static FinalStabilityMode fromLegacy(boolean aggressiveFinalStability,
+                                                    StarkShieldApp.FinalStabilityPenaltyMode penaltyMode) {
+            if (!aggressiveFinalStability) {
+                return VICTIM;
+            }
+            if (penaltyMode == StarkShieldApp.FinalStabilityPenaltyMode.AGGRESSIVE_V3) {
+                return V3;
+            }
+            if (penaltyMode == StarkShieldApp.FinalStabilityPenaltyMode.AGGRESSIVE_V4_RSS) {
+                return V4_RSS;
+            }
+            return penaltyMode == StarkShieldApp.FinalStabilityPenaltyMode.AGGRESSIVE_V2 ? V2 : V1;
+        }
     }
 
     public static class RunResult {
