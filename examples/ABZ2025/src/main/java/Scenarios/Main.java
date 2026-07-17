@@ -4,8 +4,8 @@ import Scenarios.Engine.HighwayEngine.NpcVehicleType.*;
 public class Main {
     public static void main(String[] args) throws Exception {
        // RandomStarkRun.main(args);
-        String filePath = "examples/ABZ2025/src/main/java/Scenarios/logs86/safe_initial_20260715_201602_565_4.json";
-        filePath = "examples/ABZ2025/src/main/java/Scenarios/logs_safe_controller/run_20260716_105356/crash_initial_20260716_105457_595_21.json";
+        String filePath = "examples/ABZ2025/src/main/java/Scenarios/logs87/crash_initial_20260717_133554_436_5.json";
+        //ilePath = "examples/ABZ2025/src/main/java/Scenarios/logs_safe_controller/run_20260716_105356/crash_initial_20260716_105457_595_21.json";
       RecoverStarkRun.main(new String[]{filePath});
        // RecoverStarkRun.main(new String[]{filePath, "2"});
 //        RecoverProbabilityRun.main(new String[]{filePath});
@@ -13,13 +13,13 @@ public class Main {
         boolean gen = true;
         gen = false;
 
-        //gen = true;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               gen = true;
         if(gen) {
             GenerateInitialLogsRun.GenerationConfig config = new GenerateInitialLogsRun.GenerationConfig();
             config.logDir = "examples/ABZ2025/src/main/java/Scenarios/logs87";
             config.comment = "polite traffic log generation";
             config.aiProfile = "base"; // or "adversarial"
-             config.aiProfile = "adversarial";
+            config.aiProfile = "adversarial";
             config.populateTargetVehicles = 20;
             config.populateNumLanes = 3;
             config.populateMinX = 0.0;
@@ -39,7 +39,8 @@ public class Main {
             config.readShieldIdmCooldownTimer = false;
             config.continueAfterNpcCollision = true;
 
-            config.decisionMode = StarkScenarioRunner.DecisionMode.STARK_SHIELD;
+           // config.decisionMode = StarkScenarioRunner.DecisionMode.STARK_SHIELD;
+            config.decisionMode = StarkScenarioRunner.DecisionMode.NO_SHIELD;
             //config.decisionMode = StarkScenarioRunner.DecisionMode.CONTROLLER_DRIVEN_STARK_SHIELD;
             config.useInstantProtectedCar = false;
             config.instantAiDecisionIntervalSeconds = 0.25;
